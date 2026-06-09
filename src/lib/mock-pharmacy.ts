@@ -34,9 +34,14 @@ export const mockPatients: PatientQueueItem[] = [
     durationMinutes: 15,
     alerts: ["interaction", "machine"],
     drugs: [
-      { id: "b-1", name: "Omeprazole 20mg", sig: "1x1 ac · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-      { id: "b-2", name: "Simvastatin 20mg", sig: "1x1 hs · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+      { id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" },
+      { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
     ],
+    issue: {
+      kind: "machine",
+      title: "Allergy / ADR",
+      detail: "ผู้ป่วยมีประวัติแพ้ยา กรุณายืนยันกับแพทย์",
+    },
   },
   {
     id: "pt-l",

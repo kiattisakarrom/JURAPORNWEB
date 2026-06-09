@@ -48,3 +48,22 @@ export type PharmacyQueueResponse = {
   summary: QueueSummary;
   patients: PatientQueueItem[];
 };
+
+export type StockCheckItem = {
+  id: string;
+  drugId: string;
+  drugName: string;
+  machineName: string;
+  machineCode: string;
+  available: number;
+  required: number;
+  capacity: number;
+};
+
+export type StockCheckResponse = {
+  patientId: string;
+  checkedAt: string;
+  items: StockCheckItem[];
+  canSetPending: boolean;
+  shortageMessage?: string;
+};
