@@ -67,3 +67,35 @@ export type StockCheckResponse = {
   canSetPending: boolean;
   shortageMessage?: string;
 };
+
+export type PatientProfile = {
+  patientId: string;
+  hn: string;
+  vn: string;
+  fullName: string;
+  age: string;
+  sex: string;
+  weight: string;
+  height: string;
+  ward: string;
+  doctor: string;
+  diagnosis: string;
+  keyHistory: {
+    allergy: string;
+    renal: string;
+    drugInteraction: string;
+  };
+  reconcile: Array<{
+    id: string;
+    drugName: string;
+    quantity: string;
+    instruction: string;
+    dispenseDate: string;
+  }>;
+  interactions: Array<{
+    id: string;
+    pair: string;
+    severity: string;
+    recommendation: string;
+  }>;
+};
