@@ -99,3 +99,34 @@ export type PatientProfile = {
     recommendation: string;
   }>;
 };
+
+export type CheckingCheckoutItem = {
+  id: string;
+  drugName: string;
+  dispenseDate: string;
+  quantity: string;
+  instruction: string;
+  basketCode: string;
+  machineLabel: string;
+  status: "checked" | "waiting" | "locked";
+  diStatus: string;
+  allergyStatus: string;
+};
+
+export type CheckingCheckoutPrescription = {
+  id: string;
+  rxNo: string;
+  baskets: string[];
+  items: CheckingCheckoutItem[];
+};
+
+export type CheckingCheckoutResponse = {
+  patientId: string;
+  basketLookup: string;
+  scanPlaceholder: string;
+  summary: {
+    prescriptions: number;
+    baskets: number;
+  };
+  prescriptions: CheckingCheckoutPrescription[];
+};
