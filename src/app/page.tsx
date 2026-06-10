@@ -358,8 +358,20 @@ function DesktopQueueTable({
   onSelect: (id: string) => void;
 }) {
   return (
-    <div className="hidden h-full min-h-0 overflow-auto md:block">
-      <table className="w-full min-w-[1100px] border-collapse text-left">
+    <div className="stable-scrollbar hidden h-full min-h-0 overflow-auto md:block">
+      <table className="w-full min-w-[1180px] table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-[140px]" />
+          <col className="w-[120px]" />
+          <col className="w-[120px]" />
+          <col className="w-[260px]" />
+          <col className="w-[150px]" />
+          <col className="w-[130px]" />
+          <col className="w-[140px]" />
+          <col className="w-[110px]" />
+          <col className="w-[130px]" />
+          <col className="w-[160px]" />
+        </colgroup>
         <thead className="sticky top-0 z-20 border-b border-slate-200 bg-white text-xs font-black uppercase tracking-[0.12em] text-slate-400 shadow-[0_1px_0_#dfe7f1]">
           <tr>
             {["Priority", "VN", "HN", "ชื่อ-นามสกุล", "สถานะ", "รายการยา", "แจ้งเตือน", "เวลา", "Duration", "เภสัชกร"].map((label) => (
