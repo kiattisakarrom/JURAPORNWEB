@@ -36,7 +36,7 @@ export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQu
           className={cn(
             "relative h-full w-full overflow-hidden border-l border-slate-200 bg-slate-100 shadow-2xl shadow-slate-900/20 sm:rounded-2xl sm:border",
             isProfileOpen
-              ? "md:w-[calc(100vw-368px)] md:min-w-0 lg:w-[calc(100vw-408px)] xl:w-[calc(100vw-568px)] 2xl:w-[60vw] 2xl:min-w-[860px]"
+              ? "md:w-[calc(100vw-24px)] md:min-w-0 xl:w-[calc(100vw-556px)]"
               : "md:w-[calc(100vw-24px)] md:min-w-0",
           )}
         >

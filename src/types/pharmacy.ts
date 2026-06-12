@@ -130,3 +130,33 @@ export type CheckingCheckoutResponse = {
   };
   prescriptions: CheckingCheckoutPrescription[];
 };
+
+export type DispensingPrescriptionItem = {
+  id: string;
+  drugName: string;
+  genericName: string;
+  instruction: string;
+  quantity: string;
+  status: "done" | "scanning" | "waiting";
+};
+
+export type DispensingImageSlot = {
+  id: string;
+  label: string;
+};
+
+export type DispensingCheckoutResponse = {
+  patientId: string;
+  basketScanPlaceholder: string;
+  totalItems: number;
+  queueStatus: string;
+  progressText: string;
+  prescriptionItems: DispensingPrescriptionItem[];
+  activeItem: DispensingPrescriptionItem & {
+    amount: string;
+    unit: string;
+    imageSlots: DispensingImageSlot[];
+    directions: string;
+    precautions: string;
+  };
+};

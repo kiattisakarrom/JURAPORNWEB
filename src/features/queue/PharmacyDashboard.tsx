@@ -10,6 +10,7 @@ import { getPharmacyQueue } from "@/lib/pharmacy-api";
 import { cn } from "@/lib/utils";
 import type { QueueStage } from "@/types/pharmacy";
 import { CheckingCheckoutPopup } from "@/features/checking/CheckingCheckoutPopup";
+import { DispensingPopup } from "@/features/dispensing/DispensingPopup";
 import { PatientPanel } from "@/features/verify/PatientPanel";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
@@ -47,7 +48,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }, [activeTab, patients, search]);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
-  const selectedPanel = selectedPatient?.stage === "checking" ? "checking" : "verify";
+  const selectedPanel = selectedPatient?.stage === "checking" ? "checking" : selectedPatient?.stage === "dispensing" ? "dispensing" : "verify";
 
   function selectTab(tabId: QueueStage) {
     setActiveTab(tabId);
@@ -125,6 +126,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       </div>
       {selectedPatient && selectedPanel === "checking" ? (
         <CheckingCheckoutPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
+      ) : null}
+      {selectedPatient && selectedPanel === "dispensing" ? (
+        <DispensingPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
       ) : null}
       {selectedPatient && selectedPanel === "verify" ? <PatientPanel patient={selectedPatient} onClose={() => setSelectedId(null)} /> : null}
     </main>
