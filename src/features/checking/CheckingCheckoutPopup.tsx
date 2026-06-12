@@ -1,7 +1,7 @@
 "use client";
 
-import { Activity, Barcode, FileText, Pill, RotateCcw, Save, Search, ShoppingBasket, X } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { Activity, Pill, RotateCcw, Save, Search, UserRound, X } from "lucide-react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,20 +18,36 @@ export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQu
     queryFn: () => getCheckingCheckout(patient),
   });
 
+  function closeTopLayer() {
+    if (isProfileOpen) {
+      setIsProfileOpen(false);
+      return;
+    }
+
+    onClose();
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25 backdrop-blur-[1px]">
-      <button aria-label="ปิดหน้าตรวจเช็กยา" className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
+      <button aria-label="ปิดหน้าตรวจเช็กยา" className="hidden flex-1 cursor-default lg:block" onClick={closeTopLayer} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 sm:p-3 lg:w-auto">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
-        <aside className="relative h-full w-full overflow-y-auto border-l border-slate-200 bg-slate-100 shadow-2xl shadow-slate-900/20 sm:rounded-2xl sm:border lg:w-[60vw] lg:min-w-[760px]">
-          <Button className="absolute right-4 top-4 z-20 bg-white/90 shadow-sm backdrop-blur hover:bg-white" onClick={onClose} size="icon" variant="ghost">
+        <aside
+          className={cn(
+            "relative h-full w-full overflow-hidden border-l border-slate-200 bg-slate-100 shadow-2xl shadow-slate-900/20 sm:rounded-2xl sm:border",
+            isProfileOpen
+              ? "md:w-[calc(100vw-368px)] md:min-w-0 lg:w-[calc(100vw-408px)] xl:w-[calc(100vw-568px)] 2xl:w-[60vw] 2xl:min-w-[860px]"
+              : "md:w-[calc(100vw-24px)] md:min-w-0",
+          )}
+        >
+          <Button className="absolute right-4 top-4 z-20 bg-white/95 shadow-sm backdrop-blur hover:bg-white" onClick={closeTopLayer} size="icon" variant="ghost">
             <X className="h-5 w-5" />
           </Button>
-          <div className="space-y-4 p-4">
+          <div className="h-full overflow-y-auto p-5">
             {isLoading || !checkout ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm font-bold text-slate-500">กำลังโหลดข้อมูล Checking...</div>
             ) : (
-              <CheckingCheckoutContent checkout={checkout} />
+              <CheckingCheckoutContent checkout={checkout} onOpenProfile={() => setIsProfileOpen(true)} />
             )}
           </div>
         </aside>
@@ -40,47 +56,49 @@ export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQu
   );
 }
 
-function CheckingCheckoutContent({ checkout }: { checkout: CheckingCheckoutResponse }) {
+function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: CheckingCheckoutResponse; onOpenProfile: () => void }) {
   return (
-    <>
-      <section>
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-[0.08em] text-slate-500">
-            <Activity className="h-4 w-4 text-blue-600" />
-            สรุปภาระงานในคิวนี้ (Visit Summary)
+    <div className="flex min-h-full flex-col gap-4">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+          <div>
+            <div className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900">
+              <Activity className="h-4 w-4 text-blue-600" />
+              สรุปภาระงานในคิวนี้ (Visit Summary)
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SummaryTile label="จำนวนใบยาทั้งหมด" tone="blue" value={`${checkout.summary.prescriptions} ใบสั่ง`} />
+              <SummaryTile label="จำนวนตะกร้าทั้งหมด" tone="orange" value={`${checkout.summary.baskets} ตะกร้า`} />
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SummaryTile icon={<FileText className="h-6 w-6" />} label="จำนวนใบยาทั้งหมด" tone="blue" value={`${checkout.summary.prescriptions} ใบสั่ง`} />
-            <SummaryTile icon={<ShoppingBasket className="h-6 w-6" />} label="จำนวนตะกร้าทั้งหมด" tone="orange" value={`${checkout.summary.baskets} ตะกร้า`} />
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] text-blue-700">
-            <Search className="h-4 w-4" />
-            ค้นหาตะกร้า (Basket Lookup)
-          </div>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input className="pl-9 font-black" readOnly value={checkout.basketLookup} />
-          </div>
-          <p className="mt-3 text-xs font-black text-emerald-600">
-            กำลังทำงานที่ตะกร้า: {checkout.basketLookup} (ตะกร้านี้จะล็อกชั่วคราว)
-          </p>
-        </div>
+          <div className="grid gap-4">
+            <div className="flex justify-end">
+              <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
+                <UserRound className="h-4 w-4" />
+                ดูโปรไฟล์
+              </Button>
+            </div>
 
-        <div className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] text-orange-600">
-            <Barcode className="h-4 w-4" />
-            สแกนบาร์โค้ดเช็คเอาต์ (Scan Checkout)
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm font-black text-blue-700">
+                <Search className="h-4 w-4" />
+                ค้นหาตะกร้า (Basket Lookup)
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input className="pl-9 font-black" readOnly value={checkout.basketLookup} />
+              </div>
+              <p className="mt-3 text-xs font-black text-emerald-600">กำลังทำงานที่ตะกร้า: {checkout.basketLookup} (ตะกร้านี้จะล็อกชั่วคราว)</p>
+            </div>
+
+            <div>
+              <div className="relative">
+                <Input className="border-orange-200 font-bold text-orange-700 focus:border-orange-400 focus:ring-orange-100" readOnly value={checkout.scanPlaceholder} />
+              </div>
+              <p className="mt-3 text-xs font-bold text-slate-400">ยืนยันโค้ดยาด้วย Auto-Checkbox รายการยาในตะกร้าปัจจุบัน</p>
+            </div>
           </div>
-          <div className="relative">
-            <Barcode className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-orange-400" />
-            <Input className="border-orange-200 pl-9 font-bold text-orange-700 focus:border-orange-400 focus:ring-orange-100" readOnly value={checkout.scanPlaceholder} />
-          </div>
-          <p className="mt-3 text-xs font-bold text-slate-400">ยืนยันโค้ดยาด้วย Auto-Checkbox รายการยาในตะกร้าปัจจุบัน</p>
         </div>
       </section>
 
@@ -117,7 +135,7 @@ function CheckingCheckoutContent({ checkout }: { checkout: CheckingCheckoutRespo
         ))}
       </section>
 
-      <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col gap-3 border-t border-slate-200 bg-white/95 p-4 backdrop-blur sm:flex-row sm:justify-end">
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex flex-col gap-3 border-t border-slate-200 px-4 pb-1 pt-4 sm:flex-row sm:justify-end">
         <Button variant="outline">
           <RotateCcw className="h-4 w-4" />
           Hold / ส่งกลับจุดเดิม
@@ -127,20 +145,15 @@ function CheckingCheckoutContent({ checkout }: { checkout: CheckingCheckoutRespo
           บันทึกข้อมูลเช็คเอาต์ & ปิดคิว
         </Button>
       </div>
-    </>
+    </div>
   );
 }
 
-function SummaryTile({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: "blue" | "orange" }) {
+function SummaryTile({ label, value, tone }: { label: string; value: string; tone: "blue" | "orange" }) {
   return (
-    <div className={cn("rounded-2xl border p-4", tone === "blue" ? "border-blue-100 bg-blue-50 text-blue-700" : "border-orange-100 bg-orange-50 text-orange-600")}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-slate-500">{label}</div>
-          <div className="mt-2 text-2xl font-black">{value}</div>
-        </div>
-        <div className="rounded-xl bg-white p-3 shadow-sm">{icon}</div>
-      </div>
+    <div className={cn("rounded-2xl border p-5", tone === "blue" ? "border-blue-100 bg-blue-50 text-blue-700" : "border-orange-100 bg-orange-50 text-orange-600")}>
+      <div className="text-sm font-bold text-slate-600">{label}</div>
+      <div className="mt-2 text-3xl font-black">{value}</div>
     </div>
   );
 }
@@ -150,15 +163,15 @@ function CheckingDrugRow({ item }: { item: CheckingCheckoutResponse["prescriptio
   const isLocked = item.status === "locked";
 
   return (
-    <div className={cn("grid gap-4 px-4 py-4 lg:grid-cols-[34px_1fr_110px_minmax(260px,1fr)_90px]", isLocked && "bg-slate-50 opacity-60")}>
+    <div className={cn("grid gap-4 px-5 py-5 lg:grid-cols-[34px_1.4fr_110px_minmax(280px,1fr)_90px]", isLocked && "bg-slate-50 opacity-60")}>
       <div className="flex items-center">
         <span className={cn("flex h-5 w-5 items-center justify-center rounded border text-white", isChecked ? "border-orange-500 bg-orange-500" : "border-slate-300 bg-white")}>
           {isChecked ? "✓" : ""}
         </span>
       </div>
       <div className="flex min-w-0 gap-3">
-        <div className={cn("flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border", isLocked ? "border-slate-200 bg-slate-200 text-slate-400" : "border-slate-200 bg-white text-red-600")}>
-          <Pill className="h-7 w-7" />
+        <div className={cn("flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl border", isLocked ? "border-slate-200 bg-slate-200 text-slate-400" : "border-slate-200 bg-white text-red-600")}>
+          <Pill className="h-10 w-10" />
         </div>
         <div className="min-w-0">
           <div className="truncate text-base font-black text-slate-900">{item.drugName}</div>
