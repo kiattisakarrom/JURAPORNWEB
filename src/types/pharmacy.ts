@@ -160,3 +160,34 @@ export type DispensingCheckoutResponse = {
     precautions: string;
   };
 };
+
+export type MatchingBasketItem = {
+  id: string;
+  basketId: string;
+  rxNo: string;
+  status: "checking" | "waiting" | "verified";
+};
+
+export type MatchingMedicineItem = {
+  id: string;
+  medicineCode: string;
+  medicineName: string;
+  quantity: number;
+  status: "waiting-match" | "checked";
+  baskets: MatchingBasketItem[];
+};
+
+export type MatchingPrescriptionItem = {
+  id: string;
+  presNo: string;
+  createdDate: string;
+  medicines: MatchingMedicineItem[];
+};
+
+export type MatchingCheckoutResponse = {
+  patientId: string;
+  prescriptionSearchPlaceholder: string;
+  medicineSearchPlaceholder: string;
+  basketSearchPlaceholder: string;
+  prescriptions: MatchingPrescriptionItem[];
+};

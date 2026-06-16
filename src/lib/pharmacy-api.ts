@@ -1,5 +1,5 @@
 import { buildQueueResponse } from "@/lib/mock-pharmacy";
-import type { CheckingCheckoutResponse, DispensingCheckoutResponse, PatientQueueItem, PharmacyQueueResponse } from "@/types/pharmacy";
+import type { CheckingCheckoutResponse, DispensingCheckoutResponse, MatchingCheckoutResponse, PatientQueueItem, PharmacyQueueResponse } from "@/types/pharmacy";
 
 const MOCK_LATENCY_MS = 250;
 
@@ -151,5 +151,120 @@ export async function getDispensingCheckout(patient: PatientQueueItem): Promise<
       directions: "รับประทานครั้งละ 1 เม็ด พร้อมอาหาร หรือหลังอาหารทันที วันละ 2 ครั้ง (เช้า และ เย็น)",
       precautions: "อาจทำให้เกิดอาการท้องเสีย ท้องอืด หรือคลื่นไส้ในบางรายที่รับประทานยา ควรรับประทานพร้อมอาหารเพื่อลดอาการระคายเคืองกระเพาะ",
     },
+  };
+}
+
+export async function getMatchingCheckout(patient: PatientQueueItem): Promise<MatchingCheckoutResponse> {
+  await new Promise((resolve) => globalThis.setTimeout(resolve, 320));
+
+  // Swap this function body with the real matching API when ready.
+  return {
+    patientId: patient.id,
+    prescriptionSearchPlaceholder: "ค้นหาตามชื่อยา / Basket ID / PresNo.",
+    medicineSearchPlaceholder: "ค้นหาชื่อยา / รหัสยา",
+    basketSearchPlaceholder: "ค้นหา Basket ID / Rx No.",
+    prescriptions: [
+      {
+        id: `${patient.id}-match-pres-1`,
+        presNo: "PRE-2026-001",
+        createdDate: "15/05/2026 09:30",
+        medicines: [
+          {
+            id: `${patient.id}-match-med-1`,
+            medicineCode: "D001",
+            medicineName: "Paracetamol 500mg",
+            quantity: 10,
+            status: "waiting-match",
+            baskets: [
+              { id: `${patient.id}-basket-1`, basketId: "BSK001", rxNo: "Rx00010", status: "checking" },
+              { id: `${patient.id}-basket-2`, basketId: "BSK002", rxNo: "Rx00013", status: "waiting" },
+              { id: `${patient.id}-basket-3`, basketId: "BSK003", rxNo: "Rx00012", status: "waiting" },
+              { id: `${patient.id}-basket-4`, basketId: "-", rxNo: "Rx00013", status: "verified" },
+            ],
+          },
+          {
+            id: `${patient.id}-match-med-2`,
+            medicineCode: "D002",
+            medicineName: "Amoxicillin 250mg",
+            quantity: 20,
+            status: "checked",
+            baskets: [
+              { id: `${patient.id}-basket-5`, basketId: "BSK004", rxNo: "Rx00021", status: "verified" },
+              { id: `${patient.id}-basket-6`, basketId: "BSK005", rxNo: "Rx00022", status: "waiting" },
+            ],
+          },
+          {
+            id: `${patient.id}-match-med-3`,
+            medicineCode: "D003",
+            medicineName: "Vitamin C",
+            quantity: 30,
+            status: "checked",
+            baskets: [
+              { id: `${patient.id}-basket-7`, basketId: "BSK006", rxNo: "Rx00031", status: "verified" },
+              { id: `${patient.id}-basket-8`, basketId: "BSK007", rxNo: "Rx00032", status: "checking" },
+            ],
+          },
+        ],
+      },
+      {
+        id: `${patient.id}-match-pres-2`,
+        presNo: "PRE-2026-002",
+        createdDate: "18/05/2026 14:20",
+        medicines: [
+          {
+            id: `${patient.id}-match-med-4`,
+            medicineCode: "D004",
+            medicineName: "Metformin 500mg",
+            quantity: 60,
+            status: "waiting-match",
+            baskets: [
+              { id: `${patient.id}-basket-9`, basketId: "BSK011", rxNo: "Rx00110", status: "checking" },
+              { id: `${patient.id}-basket-10`, basketId: "BSK012", rxNo: "Rx00111", status: "waiting" },
+              { id: `${patient.id}-basket-11`, basketId: "-", rxNo: "Rx00112", status: "verified" },
+            ],
+          },
+          {
+            id: `${patient.id}-match-med-5`,
+            medicineCode: "D005",
+            medicineName: "Losartan 50mg",
+            quantity: 30,
+            status: "checked",
+            baskets: [
+              { id: `${patient.id}-basket-12`, basketId: "BSK013", rxNo: "Rx00113", status: "verified" },
+              { id: `${patient.id}-basket-13`, basketId: "BSK014", rxNo: "Rx00114", status: "waiting" },
+            ],
+          },
+        ],
+      },
+      {
+        id: `${patient.id}-match-pres-3`,
+        presNo: "PRE-2026-003",
+        createdDate: "20/05/2026 11:45",
+        medicines: [
+          {
+            id: `${patient.id}-match-med-6`,
+            medicineCode: "D006",
+            medicineName: "Atorvastatin 40mg",
+            quantity: 30,
+            status: "waiting-match",
+            baskets: [
+              { id: `${patient.id}-basket-15`, basketId: "BSK020", rxNo: "Rx00210", status: "checking" },
+              { id: `${patient.id}-basket-16`, basketId: "BSK021", rxNo: "Rx00211", status: "waiting" },
+            ],
+          },
+          {
+            id: `${patient.id}-match-med-7`,
+            medicineCode: "D007",
+            medicineName: "Amlodipine 5mg",
+            quantity: 30,
+            status: "checked",
+            baskets: [
+              { id: `${patient.id}-basket-17`, basketId: "BSK022", rxNo: "Rx00212", status: "verified" },
+              { id: `${patient.id}-basket-18`, basketId: "BSK023", rxNo: "Rx00213", status: "waiting" },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }

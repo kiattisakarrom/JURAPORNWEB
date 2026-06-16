@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { QueueStage } from "@/types/pharmacy";
 import { CheckingCheckoutPopup } from "@/features/checking/CheckingCheckoutPopup";
 import { DispensingPopup } from "@/features/dispensing/DispensingPopup";
+import { MatchingPopup } from "@/features/matching/MatchingPopup";
 import { PatientPanel } from "@/features/verify/PatientPanel";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
@@ -48,7 +49,14 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }, [activeTab, patients, search]);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
-  const selectedPanel = selectedPatient?.stage === "checking" ? "checking" : selectedPatient?.stage === "dispensing" ? "dispensing" : "verify";
+  const selectedPanel =
+    selectedPatient?.stage === "checking"
+      ? "checking"
+      : selectedPatient?.stage === "dispensing"
+        ? "dispensing"
+        : selectedPatient?.stage === "matching"
+          ? "matching"
+          : "verify";
 
   function selectTab(tabId: QueueStage) {
     setActiveTab(tabId);
@@ -129,6 +137,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       ) : null}
       {selectedPatient && selectedPanel === "dispensing" ? (
         <DispensingPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
+      ) : null}
+      {selectedPatient && selectedPanel === "matching" ? (
+        <MatchingPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
       ) : null}
       {selectedPatient && selectedPanel === "verify" ? <PatientPanel patient={selectedPatient} onClose={() => setSelectedId(null)} /> : null}
     </main>
