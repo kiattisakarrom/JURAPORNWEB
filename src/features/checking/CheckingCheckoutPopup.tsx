@@ -64,7 +64,7 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
           <div>
             <div className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900">
               <Activity className="h-4 w-4 text-blue-600" />
-              สรุปภาระงานในคิวนี้ (Visit Summary)
+              Checking
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <SummaryTile label="จำนวนใบยาทั้งหมด" tone="blue" value={`${checkout.summary.prescriptions} ใบสั่ง`} />

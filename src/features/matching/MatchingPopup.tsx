@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardList, FileText, Play, Search, ShoppingBasket, UserRound, X } from "lucide-react";
+import { Activity, ClipboardList, FileText, Play, Search, ShoppingBasket, UserRound, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -90,17 +90,14 @@ function MatchingContent({
 }) {
   return (
     <div className="flex min-h-full flex-col gap-4">
-      <div className="flex items-start justify-between gap-4 pr-12">
-        <div className="flex min-w-0 items-center gap-4">
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-sm">
-            <ClipboardList className="h-8 w-8" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-2xl font-black text-blue-950">Matching Screen</h2>
-            <p className="mt-1 text-sm font-bold text-slate-500">จัดการข้อมูลใบสั่งยาและตะกร้าในระบบ</p>
+      <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900">
+            <Activity className="h-4 w-4 text-blue-600" />
+            Matching
           </div>
         </div>
-        <Button className="hidden bg-blue-50 text-blue-700 hover:bg-blue-100 sm:inline-flex" onClick={onOpenProfile} variant="secondary">
+        <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
           <UserRound className="h-4 w-4" />
           ดูโปรไฟล์
         </Button>
@@ -273,7 +270,7 @@ function BasketStatusBadge({ status }: { status: MatchingBasketItem["status"] })
     return <Badge className="w-fit bg-orange-50 text-orange-700 ring-1 ring-orange-100">กำลังตรวจสอบ</Badge>;
   }
 
-  return <Badge className="w-fit bg-orange-50 text-orange-700 ring-1 ring-orange-100">รอศึกษา</Badge>;
+  return <Badge className="w-fit bg-orange-50 text-orange-700 ring-1 ring-orange-100">กำลังตรวจสอบ</Badge>;
 }
 
 function PillIcon() {

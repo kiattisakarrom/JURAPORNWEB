@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, FileText, ImageIcon, Pill, RotateCcw, Search, ShieldCheck, UserRound, X } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, FileText, ImageIcon, Pill, RotateCcw, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +60,10 @@ function DispensingContent({ dispensing, onOpenProfile }: { dispensing: Dispensi
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="flex flex-col gap-3 pr-12 lg:flex-row lg:items-center lg:justify-between">
-        <Badge className="w-fit bg-blue-600 px-4 py-2 text-white shadow-sm">Dispensing</Badge>
+        <div className="mb-4 flex items-center gap-2 text-lg font-black text-slate-900">
+          <Activity className="h-4 w-4 text-blue-600" />
+          Dispensing
+        </div>
         <div className="grid gap-3 sm:grid-cols-[180px_minmax(260px,1fr)] lg:w-[620px]">
           <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
             <UserRound className="h-4 w-4" />
