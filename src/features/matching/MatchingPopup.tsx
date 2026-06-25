@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, ClipboardList, FileText, Play, Search, ShoppingBasket, UserRound, X } from "lucide-react";
+import { Activity, ClipboardList, FileText, Play, Send, Search, ShoppingBasket, UserRound, X } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -230,6 +230,13 @@ function MatchingContent({
           )}
         </div>
       </MatchingSection>
+
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex flex-col gap-3 px-4 pb-1 pt-4 sm:flex-row sm:justify-end">
+        <Button className="border-orange-300 text-orange-700 hover:bg-orange-50 hover:text-orange-800" variant="outline">
+          <Send className="h-4 w-4" />
+          ส่งจัดยา
+        </Button>
+      </div>
     </div>
   );
 }

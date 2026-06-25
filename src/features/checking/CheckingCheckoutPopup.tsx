@@ -160,7 +160,7 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
         })}
       </section>
 
-      <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex flex-col gap-3 border-t border-slate-200 px-4 pb-1 pt-4 sm:flex-row sm:justify-end">
+      <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex flex-col gap-3 px-4 pb-1 pt-4 sm:flex-row sm:justify-end">
         <Button variant="outline">
           <RotateCcw className="h-4 w-4" />
           Hold / ส่งกลับจุดเดิม
