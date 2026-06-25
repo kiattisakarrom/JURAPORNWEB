@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Activity, Clock3, LogOut, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,10 +28,30 @@ const tabs: { id: QueueStage; label: string }[] = [
   { id: "missed-call", label: "Missed-call" },
 ];
 
+function useLiveClock() {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  return now.toLocaleTimeString("th-TH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeTab, setActiveTab] = useState<QueueStage>("all");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const liveTime = useLiveClock();
   const { data, isLoading } = useQuery({
     queryKey: ["pharmacy-queue"],
     queryFn: getPharmacyQueue,
@@ -90,7 +110,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <div className="hidden items-center gap-2 font-mono text-lg font-black tracking-[0.2em] text-slate-800 sm:flex">
               <Clock3 className="h-4 w-4 text-slate-400" />
-              09:10:43
+              {liveTime}
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
               <span className="font-sans text-xs tracking-normal text-slate-400">LIVE</span>
             </div>
