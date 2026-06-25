@@ -31,7 +31,7 @@ export function AuthScreen({ onLogin }: { onLogin: () => void }) {
       return;
     }
 
-    toast.error("รหัสทดสอบคือ username 1 และ password 1");
+    toast.error("รหัสทดสอบคือ 1 และ 1");
   }
 
   return (
@@ -96,7 +96,7 @@ export function AuthScreen({ onLogin }: { onLogin: () => void }) {
           <div className="mb-6">
             <h3 className="text-2xl font-black text-slate-950">{mode === "login" ? "เข้าสู่ระบบ" : "ลงทะเบียนผู้ใช้"}</h3>
             <p className="mt-2 text-sm font-medium text-slate-500">
-              {mode === "login" ? "ใช้รหัสทดสอบ username 1 และ password 1" : "mock form สำหรับเตรียมหน้าตาและ flow ก่อนต่อ backend"}
+              {mode === "login" ? "ใช้รหัสทดสอบ 1 และ 1" : "mock form สำหรับเตรียมหน้าตาและ flow ก่อนต่อ backend"}
             </p>
           </div>
 
