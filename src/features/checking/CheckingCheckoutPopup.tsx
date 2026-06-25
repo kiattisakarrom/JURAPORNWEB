@@ -57,6 +57,15 @@ export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQu
 }
 
 function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: CheckingCheckoutResponse; onOpenProfile: () => void }) {
+  const [basketLookup, setBasketLookup] = useState(checkout.basketLookup);
+  const [scanCode, setScanCode] = useState("");
+  const activeBasket = basketLookup.trim().toUpperCase();
+  const visiblePrescriptions = checkout.prescriptions.map((prescription) => ({
+    ...prescription,
+    items: activeBasket ? prescription.items.filter((item) => item.basketCode.toUpperCase() === activeBasket) : prescription.items,
+  }));
+  const hasVisibleItems = visiblePrescriptions.some((prescription) => prescription.items.length > 0);
+
   return (
     <div className="flex min-h-full flex-col gap-4">
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -87,14 +96,26 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
               </div>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input className="pl-9 font-black" readOnly value={checkout.basketLookup} />
+                <Input
+                  className="pl-9 font-black uppercase placeholder:normal-case placeholder:text-slate-400"
+                  placeholder="รหัสตะกร้ายา"
+                  value={basketLookup}
+                  onChange={(event) => setBasketLookup(event.target.value.toUpperCase())}
+                />
               </div>
-              <p className="mt-3 text-xs font-black text-emerald-600">กำลังทำงานที่ตะกร้า: {checkout.basketLookup} (ตะกร้านี้จะล็อกชั่วคราว)</p>
+              <p className={cn("mt-3 text-xs font-black", hasVisibleItems ? "text-emerald-600" : "text-orange-600")}>
+                {hasVisibleItems && activeBasket ? `กำลังทำงานที่ตะกร้า: ${activeBasket} (ตะกร้านี้จะล็อกชั่วคราว)` : "ยังไม่พบรายการยาในตะกร้านี้"}
+              </p>
             </div>
 
             <div>
               <div className="relative">
-                <Input className="border-orange-200 font-bold text-orange-700 focus:border-orange-400 focus:ring-orange-100" readOnly value={checkout.scanPlaceholder} />
+                <Input
+                  className="border-orange-200 font-bold text-orange-700 placeholder:text-orange-300 focus:border-orange-400 focus:ring-orange-100"
+                  placeholder={checkout.scanPlaceholder}
+                  value={scanCode}
+                  onChange={(event) => setScanCode(event.target.value)}
+                />
               </div>
               <p className="mt-3 text-xs font-bold text-slate-400">ยืนยันโค้ดยาด้วย Auto-Checkbox รายการยาในตะกร้าปัจจุบัน</p>
             </div>
@@ -103,17 +124,20 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
       </section>
 
       <section className="space-y-4">
-        {checkout.prescriptions.map((prescription, index) => (
+        {visiblePrescriptions.map((prescription, index) => {
+          const hasActiveBasket = activeBasket ? prescription.baskets.includes(activeBasket) : prescription.items.length > 0;
+
+          return (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" key={prescription.id}>
             <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-3">
-                <Badge className={index === 0 ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}>ใบยาที่ {index + 1}</Badge>
+                <Badge className={hasActiveBasket ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-500"}>ใบยาที่ {index + 1}</Badge>
                 <span className="text-sm font-black text-slate-600">เลขที่ใบสั่งยา: {prescription.rxNo}</span>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs font-black text-slate-500">
                 <span>List เสาตะกร้าในใบนี้:</span>
                 {prescription.baskets.map((basket) => (
-                  <Badge className={basket === checkout.basketLookup ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-500"} key={basket}>
+                  <Badge className={basket === activeBasket ? "bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200" : "bg-slate-100 text-slate-500"} key={basket}>
                     {basket}
                   </Badge>
                 ))}
@@ -128,11 +152,12 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
               </div>
             ) : (
               <div className="bg-slate-50 px-4 py-8 text-center text-sm font-bold text-slate-400">
-                รายการยาในใบยานี้ถูกผูกกับตะกร้าอื่น กรุณาเปลี่ยนเลขตะกร้าในระบบกลางเพื่อตรวจสอบ
+                {activeBasket ? `ไม่พบรายการยาใน ${activeBasket} สำหรับใบสั่งยานี้` : "กรุณากรอกรหัสตะกร้าเพื่อตรวจสอบรายการยา"}
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </section>
 
       <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto flex flex-col gap-3 border-t border-slate-200 px-4 pb-1 pt-4 sm:flex-row sm:justify-end">

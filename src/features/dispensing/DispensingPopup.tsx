@@ -57,6 +57,9 @@ export function DispensingPopup({ patient, onClose }: { patient: PatientQueueIte
 }
 
 function DispensingContent({ dispensing, onOpenProfile }: { dispensing: DispensingCheckoutResponse; onOpenProfile: () => void }) {
+  const [headerScanCode, setHeaderScanCode] = useState("");
+  const [checkoutScanCode, setCheckoutScanCode] = useState("");
+
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="flex flex-col gap-3 pr-12 lg:flex-row lg:items-center lg:justify-between">
@@ -71,7 +74,12 @@ function DispensingContent({ dispensing, onOpenProfile }: { dispensing: Dispensi
           </Button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input className="bg-white pl-9 font-bold" readOnly value={dispensing.basketScanPlaceholder} />
+            <Input
+              className="bg-white pl-9 font-bold placeholder:text-slate-400"
+              placeholder={dispensing.basketScanPlaceholder}
+              value={headerScanCode}
+              onChange={(event) => setHeaderScanCode(event.target.value)}
+            />
           </div>
         </div>
       </div>
@@ -113,7 +121,12 @@ function DispensingContent({ dispensing, onOpenProfile }: { dispensing: Dispensi
             <div className="text-sm font-black text-orange-700">ขั้นตอนการจ่ายยาตามลำดับ</div>
             <div className="mt-1 text-base font-black text-slate-900">โปรดสแกนบาร์โค้ดเพื่อรอจ่าย/แสกนเพื่อยืนยัน</div>
           </div>
-          <Input className="border-slate-200 bg-white font-bold" readOnly value={dispensing.basketScanPlaceholder} />
+          <Input
+            className="border-slate-200 bg-white font-bold placeholder:text-slate-400"
+            placeholder="สแกนบาร์โคดยา..."
+            value={checkoutScanCode}
+            onChange={(event) => setCheckoutScanCode(event.target.value)}
+          />
         </div>
 
         <div className="p-5">

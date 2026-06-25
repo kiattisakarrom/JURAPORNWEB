@@ -21,7 +21,7 @@ export async function getCheckingCheckout(patient: PatientQueueItem): Promise<Ch
     scanPlaceholder: "ยิงบาร์โค้ดหน้าซองยาเพื่อยืนยัน...",
     summary: {
       prescriptions: 2,
-      baskets: 4,
+      baskets: 5,
     },
     prescriptions: [
       {
@@ -70,8 +70,45 @@ export async function getCheckingCheckout(patient: PatientQueueItem): Promise<Ch
       {
         id: `${patient.id}-rx-2`,
         rxNo: `RX-${patient.vn.slice(-5)}-02`,
-        baskets: ["B-003", "B-004"],
-        items: [],
+        baskets: ["B-003", "B-004", "B-005"],
+        items: [
+          {
+            id: `${patient.id}-check-4`,
+            drugName: "Metformin 500 mg",
+            dispenseDate: "01/06/2026",
+            quantity: "60 เม็ด",
+            instruction: "ครั้งละ 1 เม็ด พร้อมอาหาร เช้า-เย็น",
+            basketCode: "B-003",
+            machineLabel: "Dpro5",
+            status: "waiting",
+            diStatus: "DI: ปลอดภัย",
+            allergyStatus: "Allergy Alert: ผ่าน",
+          },
+          {
+            id: `${patient.id}-check-5`,
+            drugName: "Amlodipine 5 mg",
+            dispenseDate: "01/06/2026",
+            quantity: "30 เม็ด",
+            instruction: "วันละ 1 เม็ด หลังอาหารเช้า",
+            basketCode: "B-004",
+            machineLabel: "LED",
+            status: "checked",
+            diStatus: "DI: ปลอดภัย",
+            allergyStatus: "Allergy Alert: ผ่าน",
+          },
+          {
+            id: `${patient.id}-check-6`,
+            drugName: "Atorvastatin 40 mg",
+            dispenseDate: "01/06/2026",
+            quantity: "30 เม็ด",
+            instruction: "วันละ 1 เม็ด ก่อนนอน",
+            basketCode: "B-005",
+            machineLabel: "Dpro5",
+            status: "waiting",
+            diStatus: "DI: ปลอดภัย",
+            allergyStatus: "Allergy Alert: ผ่าน",
+          },
+        ],
       },
     ],
   };

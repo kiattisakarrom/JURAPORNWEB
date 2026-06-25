@@ -88,6 +88,36 @@ function MatchingContent({
   onSelectPrescription: (prescription: MatchingPrescriptionItem) => void;
   onSelectMedicine: (medicineId: string) => void;
 }) {
+  const [prescriptionSearch, setPrescriptionSearch] = useState("");
+  const [medicineSearch, setMedicineSearch] = useState("");
+  const [basketSearch, setBasketSearch] = useState("");
+  const prescriptionKeyword = prescriptionSearch.trim().toLowerCase();
+  const medicineKeyword = medicineSearch.trim().toLowerCase();
+  const basketKeyword = basketSearch.trim().toLowerCase();
+  const visiblePrescriptions = matching.prescriptions.filter((prescription) => {
+    if (!prescriptionKeyword) return true;
+
+    return [
+      prescription.presNo,
+      prescription.createdDate,
+      ...prescription.medicines.flatMap((medicine) => [
+        medicine.medicineName,
+        medicine.medicineCode,
+        ...medicine.baskets.flatMap((basket) => [basket.basketId, basket.rxNo]),
+      ]),
+    ].some((value) => value.toLowerCase().includes(prescriptionKeyword));
+  });
+  const visibleMedicines = selectedPrescription.medicines.filter((medicine) => {
+    if (!medicineKeyword) return true;
+
+    return [medicine.medicineName, medicine.medicineCode].some((value) => value.toLowerCase().includes(medicineKeyword));
+  });
+  const visibleBaskets = selectedMedicine.baskets.filter((basket) => {
+    if (!basketKeyword) return true;
+
+    return [basket.basketId, basket.rxNo].some((value) => value.toLowerCase().includes(basketKeyword));
+  });
+
   return (
     <div className="flex min-h-full flex-col gap-4">
       <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-center sm:justify-between">
@@ -105,15 +135,17 @@ function MatchingContent({
 
       <MatchingSection
         icon={<ClipboardList className="h-5 w-5 text-blue-600" />}
+        searchValue={prescriptionSearch}
         searchPlaceholder={matching.prescriptionSearchPlaceholder}
         title="ข้อมูลใบสั่งยา (Prescriptions)"
+        onSearchChange={setPrescriptionSearch}
       >
         <div className="grid grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] border-b border-slate-100 px-5 py-3 text-xs font-black uppercase text-blue-700">
           <span>PresNo.</span>
           <span>CreatedDate</span>
         </div>
         <div className="max-h-52 overflow-y-auto p-3">
-          {matching.prescriptions.map((prescription) => (
+          {visiblePrescriptions.length ? visiblePrescriptions.map((prescription) => (
             <button
               className={cn(
                 "grid w-full grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] items-center rounded-xl px-3 py-3 text-left transition hover:bg-blue-50",
@@ -131,14 +163,18 @@ function MatchingContent({
               </span>
               <span className="font-semibold text-blue-950">{prescription.createdDate}</span>
             </button>
-          ))}
+          )) : (
+            <div className="px-3 py-6 text-center text-sm font-bold text-slate-400">ไม่พบข้อมูลใบสั่งยาที่ค้นหา</div>
+          )}
         </div>
       </MatchingSection>
 
       <MatchingSection
         icon={<PillIcon />}
+        searchValue={medicineSearch}
         searchPlaceholder={matching.medicineSearchPlaceholder}
         title="รายการยาในใบสั่งยา"
+        onSearchChange={setMedicineSearch}
       >
         <div className="grid grid-cols-[minmax(220px,1fr)_90px_150px_90px] gap-3 border-b border-slate-100 px-6 py-3 text-xs font-black uppercase text-blue-700 max-lg:hidden">
           <span>Medicine Name</span>
@@ -147,7 +183,7 @@ function MatchingContent({
           <span className="text-center">Action</span>
         </div>
         <div className="max-h-56 overflow-y-auto p-3">
-          {selectedPrescription.medicines.map((medicine, index) => (
+          {visibleMedicines.length ? visibleMedicines.map((medicine, index) => (
             <button
               className={cn(
                 "grid w-full gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-blue-50 lg:grid-cols-[minmax(220px,1fr)_90px_150px_90px] lg:items-center",
@@ -172,20 +208,26 @@ function MatchingContent({
               </span>
               <span className="text-center font-black text-slate-500">-</span>
             </button>
-          ))}
+          )) : (
+            <div className="px-3 py-6 text-center text-sm font-bold text-slate-400">ไม่พบรายการยาที่ค้นหา</div>
+          )}
         </div>
       </MatchingSection>
 
       <MatchingSection
         icon={<ShoppingBasket className="h-5 w-5 text-blue-600" />}
+        searchValue={basketSearch}
         searchPlaceholder={matching.basketSearchPlaceholder}
         title="รายการตะกร้าในระบบ"
         tone="orange"
+        onSearchChange={setBasketSearch}
       >
         <div className="max-h-60 overflow-y-auto p-3">
-          {selectedMedicine.baskets.map((basket, index) => (
+          {visibleBaskets.length ? visibleBaskets.map((basket, index) => (
             <BasketRow basket={basket} index={index} key={basket.id} />
-          ))}
+          )) : (
+            <div className="px-3 py-6 text-center text-sm font-bold text-slate-400">ไม่พบรายการตะกร้าที่ค้นหา</div>
+          )}
         </div>
       </MatchingSection>
     </div>
@@ -196,14 +238,18 @@ function MatchingSection({
   title,
   icon,
   searchPlaceholder,
+  searchValue,
   tone = "blue",
   children,
+  onSearchChange,
 }: {
   title: string;
   icon: ReactNode;
   searchPlaceholder: string;
+  searchValue?: string;
   tone?: "blue" | "orange";
   children: ReactNode;
+  onSearchChange?: (value: string) => void;
 }) {
   return (
     <section className={cn("overflow-hidden rounded-2xl border bg-white shadow-sm", tone === "orange" ? "border-orange-100 bg-orange-50/35" : "border-slate-200")}>
@@ -214,7 +260,13 @@ function MatchingSection({
         </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <Input className="bg-white pl-9 font-bold" readOnly value={searchPlaceholder} />
+          <Input
+            className="bg-white pl-9 font-bold placeholder:text-slate-400"
+            placeholder={searchPlaceholder}
+            readOnly={!onSearchChange}
+            value={onSearchChange ? searchValue : searchPlaceholder}
+            onChange={(event) => onSearchChange?.(event.target.value)}
+          />
         </div>
       </div>
       {children}
