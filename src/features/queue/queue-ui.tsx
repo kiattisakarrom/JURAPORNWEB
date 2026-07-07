@@ -2,40 +2,40 @@ import { AlertTriangle, CheckCircle2, PackageCheck, Pill, Siren, Sparkles } from
 import type { AlertKind, PatientQueueItem, Priority } from "@/types/pharmacy";
 
 export const alertStyles: Record<AlertKind, string> = {
-  duplicate: "bg-rose-100 text-rose-600",
-  interaction: "bg-blue-100 text-blue-700",
-  machine: "bg-orange-100 text-orange-600",
-  stock: "bg-pink-100 text-pink-700",
-  paper: "bg-yellow-100 text-amber-700",
-  note: "bg-violet-100 text-violet-700",
+  duplicate: "bg-[#fdeaea] text-[#d83a3a]",
+  interaction: "bg-[#e7efff] text-[#2f6bf3]",
+  machine: "bg-[#fff2e1] text-[#e07d12]",
+  stock: "bg-[#fce7f3] text-[#be185d]",
+  paper: "bg-[#fff5db] text-[#bd8208]",
+  note: "bg-[#f0ecff] text-[#7a5cff]",
 };
 
 export const priorityStyles: Record<Priority, string> = {
-  Stat: "text-red-500",
-  "Re-work": "text-orange-500",
-  New: "text-slate-400",
+  Stat: "text-[#e0392a]",
+  "Re-work": "text-[#e07d12]",
+  New: "text-[#9aa7b8]",
 };
 
 export const stageStyles: Record<PatientQueueItem["stage"], string> = {
-  verify: "bg-blue-100 text-blue-700",
-  picking: "bg-cyan-100 text-cyan-700",
-  matching: "bg-violet-100 text-violet-700",
-  checking: "bg-emerald-100 text-emerald-700",
-  dispensing: "bg-indigo-100 text-indigo-700",
-  pending: "bg-yellow-100 text-amber-700",
-  complete: "bg-slate-100 text-slate-600",
-  "missed-call": "bg-rose-100 text-rose-700",
+  verify: "bg-[#eef3ff] text-[#2f6bf3]",
+  picking: "bg-[#f0ecff] text-[#7a5cff]",
+  matching: "bg-[#fff2e1] text-[#e07d12]",
+  checking: "bg-[#e7f6ec] text-[#16a34a]",
+  dispensing: "bg-[#e2f5fb] text-[#0a8bb0]",
+  pending: "bg-[#fff5db] text-[#bd8208]",
+  complete: "bg-[#e7f6ec] text-[#15924a]",
+  "missed-call": "bg-[#fdebeb] text-[#d83a3a]",
 };
 
 export const stageDotStyles: Record<PatientQueueItem["stage"], string> = {
-  verify: "bg-blue-500",
-  picking: "bg-cyan-500",
-  matching: "bg-violet-500",
-  checking: "bg-emerald-500",
-  dispensing: "bg-indigo-500",
-  pending: "bg-amber-500",
-  complete: "bg-slate-400",
-  "missed-call": "bg-rose-500",
+  verify: "bg-[#2f6bf3]",
+  picking: "bg-[#7a5cff]",
+  matching: "bg-[#e07d12]",
+  checking: "bg-[#16a34a]",
+  dispensing: "bg-[#0a8bb0]",
+  pending: "bg-[#bd8208]",
+  complete: "bg-[#15924a]",
+  "missed-call": "bg-[#d83a3a]",
 };
 
 export function stageLabel(stage: PatientQueueItem["stage"]) {
@@ -44,9 +44,9 @@ export function stageLabel(stage: PatientQueueItem["stage"]) {
 }
 
 export function durationClass(minutes: number) {
-  if (minutes <= 20) return "text-emerald-500";
-  if (minutes <= 30) return "text-orange-500";
-  return "text-orange-600";
+  if (minutes <= 20) return "text-[#15924a]";
+  if (minutes <= 30) return "text-[#bd8208]";
+  return "text-[#d83a3a]";
 }
 
 export function alertIcon(kind: AlertKind) {
