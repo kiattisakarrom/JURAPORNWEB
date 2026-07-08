@@ -24,6 +24,22 @@ export async function getPatientProfile(patient: PatientQueueItem): Promise<Pati
       renal: "ไม่มี",
       drugInteraction: patient.alerts.includes("interaction") ? "ไม่พบอันตรกิริยาระหว่างยาที่รุนแรง" : "ไม่พบ",
     },
+    labs:
+      patient.name === "Patient B"
+        ? [
+            { id: `${patient.id}-lab-egfr`, key: "eGFR", value: "92", unit: "mL/min" },
+            { id: `${patient.id}-lab-hba1c`, key: "HbA1c", value: "8.4", unit: "%", high: true },
+            { id: `${patient.id}-lab-hb`, key: "Hb", value: "11.2", unit: "g/dL" },
+            { id: `${patient.id}-lab-scr`, key: "Scr", value: "0.8", unit: "mg/dL" },
+            { id: `${patient.id}-lab-k`, key: "K+", value: "4.1", unit: "mmol/L" },
+          ]
+        : [
+            { id: `${patient.id}-lab-egfr`, key: "eGFR", value: patient.alerts.includes("stock") ? "48" : "72", unit: "mL/min", high: patient.alerts.includes("stock") },
+            { id: `${patient.id}-lab-scr`, key: "Scr", value: patient.alerts.includes("stock") ? "1.6" : "1.0", unit: "mg/dL", high: patient.alerts.includes("stock") },
+            { id: `${patient.id}-lab-ast`, key: "AST", value: "32", unit: "U/L" },
+            { id: `${patient.id}-lab-alt`, key: "ALT", value: "28", unit: "U/L" },
+            { id: `${patient.id}-lab-k`, key: "K+", value: "4.2", unit: "mmol/L" },
+          ],
     reconcile: [
       {
         id: `${patient.id}-rec-1`,

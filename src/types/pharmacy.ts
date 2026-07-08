@@ -68,6 +68,14 @@ export type StockCheckResponse = {
   shortageMessage?: string;
 };
 
+export type PatientLabResult = {
+  id: string;
+  key: string;
+  value: string;
+  unit?: string;
+  high?: boolean;
+};
+
 export type PatientProfile = {
   patientId: string;
   hn: string;
@@ -85,6 +93,7 @@ export type PatientProfile = {
     renal: string;
     drugInteraction: string;
   };
+  labs: PatientLabResult[];
   reconcile: Array<{
     id: string;
     drugName: string;
