@@ -28,7 +28,7 @@ export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQu
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 flex h-dvh justify-end bg-slate-950/25 backdrop-blur-[1px]">
       <button aria-label="ปิดหน้าตรวจเช็กยา" className="hidden flex-1 cursor-default lg:block" onClick={closeTopLayer} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 sm:p-3 lg:w-auto">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
@@ -85,7 +85,7 @@ function CheckingCheckoutContent({ checkout, onOpenProfile }: { checkout: Checki
             <div className="flex justify-end">
               <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
                 <UserRound className="h-4 w-4" />
-                ดูโปรไฟล์
+                Subjective
               </Button>
             </div>
 

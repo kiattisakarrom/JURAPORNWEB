@@ -21,6 +21,20 @@ export type DrugItem = {
   machineCode: string;
 };
 
+export type PatientPrescription = {
+  id: string;
+  pn: string;
+  stage: "verify";
+  time: string;
+  alerts: AlertKind[];
+  drugs: DrugItem[];
+  issue?: {
+    kind: AlertKind;
+    title: string;
+    detail: string;
+  };
+};
+
 export type PatientQueueItem = {
   id: string;
   vn: string;
@@ -33,6 +47,8 @@ export type PatientQueueItem = {
   durationMinutes: number;
   alerts: AlertKind[];
   drugs: DrugItem[];
+  prescriptions?: PatientPrescription[];
+  doctor?: string;
   pharmacist?: string;
   issue?: {
     kind: AlertKind;
@@ -78,6 +94,7 @@ export type PatientLabResult = {
 
 export type PatientProfile = {
   patientId: string;
+  subjective: string;
   hn: string;
   vn: string;
   fullName: string;

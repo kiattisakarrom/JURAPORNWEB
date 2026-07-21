@@ -38,7 +38,7 @@ export function MatchingPopup({ patient, onClose }: { patient: PatientQueueItem;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 flex h-dvh justify-end bg-slate-950/25 backdrop-blur-[1px]">
       <button aria-label="ปิดหน้า Matching" className="hidden flex-1 cursor-default lg:block" onClick={closeTopLayer} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 sm:p-3 lg:w-auto">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
@@ -129,7 +129,7 @@ function MatchingContent({
         </div>
         <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
           <UserRound className="h-4 w-4" />
-          ดูโปรไฟล์
+          Subjective
         </Button>
       </div>
 
@@ -140,7 +140,7 @@ function MatchingContent({
         title="ข้อมูลใบสั่งยา (Prescriptions)"
         onSearchChange={setPrescriptionSearch}
       >
-        <div className="grid grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] border-b border-slate-100 px-5 py-3 text-xs font-black uppercase text-blue-700">
+        <div className="hidden grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] border-b border-slate-100 px-5 py-3 text-xs font-black uppercase text-blue-700 sm:grid">
           <span>PresNo.</span>
           <span>CreatedDate</span>
         </div>
@@ -148,7 +148,7 @@ function MatchingContent({
           {visiblePrescriptions.length ? visiblePrescriptions.map((prescription) => (
             <button
               className={cn(
-                "grid w-full grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] items-center rounded-xl px-3 py-3 text-left transition hover:bg-blue-50",
+                "grid w-full gap-2 rounded-xl px-3 py-3 text-left transition hover:bg-blue-50 sm:grid-cols-[minmax(180px,1fr)_minmax(160px,0.8fr)] sm:items-center",
                 selectedPrescription.id === prescription.id && "border-l-4 border-blue-600 bg-blue-50 shadow-sm",
               )}
               key={prescription.id}
@@ -161,7 +161,7 @@ function MatchingContent({
                 </span>
                 {prescription.presNo}
               </span>
-              <span className="font-semibold text-blue-950">{prescription.createdDate}</span>
+              <span className="font-semibold text-blue-950"><span className="text-xs text-slate-400 sm:hidden">วันที่สร้าง: </span>{prescription.createdDate}</span>
             </button>
           )) : (
             <div className="px-3 py-6 text-center text-sm font-bold text-slate-400">ไม่พบข้อมูลใบสั่งยาที่ค้นหา</div>

@@ -61,9 +61,10 @@ function useLiveClock() {
 
 export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   const [activeScreen, setActiveScreen] = useState<WorkspaceScreen>("verify");
-  const [activeTab, setActiveTab] = useState<QueueStage>("all");
+  const [activeTab, setActiveTab] = useState<QueueStage>("verify");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<string | null>(null);
   const liveTime = useLiveClock();
   const { data, isLoading } = useQuery({
     queryKey: ["pharmacy-queue"],
@@ -76,12 +77,26 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     const keyword = search.trim().toLowerCase();
     return patients.filter((patient) => {
       const matchesTab = activeTab === "all" || patient.stage === activeTab;
-      const matchesSearch = !keyword || [patient.vn, patient.hn, patient.name].some((value) => value.toLowerCase().includes(keyword));
+      const matchesSearch =
+        !keyword ||
+        [patient.vn, patient.hn, patient.name].some((value) => value.toLowerCase().includes(keyword)) ||
+        patient.prescriptions?.some((prescription) => `pn ${prescription.pn}`.includes(keyword) || prescription.pn.includes(keyword));
       return matchesTab && matchesSearch;
     });
   }, [activeTab, patients, search]);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
+  const selectedPrescription = selectedPatient?.prescriptions?.find((prescription) => prescription.id === selectedPrescriptionId);
+  const selectedPatientForPanel = selectedPatient && selectedPrescription
+    ? {
+        ...selectedPatient,
+        alerts: selectedPrescription.alerts,
+        drugs: selectedPrescription.drugs,
+        issue: selectedPrescription.issue,
+        medicationCount: selectedPrescription.drugs.length,
+        time: selectedPrescription.time,
+      }
+    : selectedPatient;
   const selectedPanel =
     selectedPatient?.stage === "checking"
       ? "checking"
@@ -94,17 +109,29 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   function selectTab(tabId: QueueStage) {
     setActiveTab(tabId);
     setSelectedId(null);
+    setSelectedPrescriptionId(null);
   }
 
   function selectScreen(screen: WorkspaceScreen) {
     setActiveScreen(screen);
     setSelectedId(null);
+    setSelectedPrescriptionId(null);
+  }
+
+  function selectQueueItem(id: string, prescriptionId?: string) {
+    setSelectedId(id);
+    setSelectedPrescriptionId(prescriptionId ?? null);
+  }
+
+  function closeSelectedItem() {
+    setSelectedId(null);
+    setSelectedPrescriptionId(null);
   }
 
   const activeItem = workspaceItems.find((item) => item.id === activeScreen) ?? workspaceItems[0];
 
   return (
-    <main className="flex h-screen overflow-hidden bg-[#eef1f5] pb-16 text-[#1e2a3a] md:pb-0">
+    <main className="flex h-dvh min-h-0 overflow-hidden bg-[#eef1f5] pb-[calc(4rem+env(safe-area-inset-bottom))] text-[#1e2a3a] md:pb-0">
       <SidebarNav activeScreen={activeScreen} items={workspaceItems} onSelect={selectScreen} />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <WorkspaceHeader activeItem={activeItem} liveTime={liveTime} search={search} summary={data?.summary} onLogout={onLogout} onSearch={setSearch} />
@@ -125,7 +152,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                       type="button"
                     >
                       {tab.label}
-                      <span className={cn("ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-[7px] px-1.5 text-[11.5px] font-bold", activeTab === tab.id ? "bg-[#e7efff] text-[#2f6bf3]" : "bg-[#eef1f5] text-[#8a97a8]")}>{data?.summary[tab.id] ?? 0}</span>
+                      <span className={cn("ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-[7px] px-1.5 text-[11.5px] font-bold", activeTab === tab.id ? "bg-[#e7efff] text-[#2f6bf3]" : "bg-[#eef1f5] text-[#8a97a8]")}>{data?.summary[tab.id] ?? 0}{tab.id === "verify" ? " PN" : ""}</span>
                       {activeTab === tab.id ? <span className="absolute bottom-[-1px] left-2 right-2 h-[2.5px] rounded-t-full bg-[#2f6bf3]" /> : null}
                     </button>
                   ))}
@@ -133,8 +160,8 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
               </nav>
 
               <section className="h-full min-h-0 overflow-hidden bg-white">
-                <QueueTable isLoading={isLoading} patients={filteredPatients} selectedId={selectedPatient?.id} onClose={() => setSelectedId(null)} onSelect={setSelectedId} />
-                <MobileQueueList patients={filteredPatients} selectedId={selectedPatient?.id} onSelect={setSelectedId} />
+                <QueueTable isLoading={isLoading} patients={filteredPatients} selectedId={selectedPatient?.id} onSelect={selectQueueItem} />
+                <MobileQueueList patients={filteredPatients} selectedId={selectedPatient?.id} onSelect={selectQueueItem} />
               </section>
             </div>
           ) : null}
@@ -146,15 +173,17 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
 
         {activeScreen === "verify" && selectedPatient && selectedPanel === "checking" ? (
-          <CheckingCheckoutPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
+          <CheckingCheckoutPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
         {activeScreen === "verify" && selectedPatient && selectedPanel === "dispensing" ? (
-          <DispensingPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
+          <DispensingPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
         {activeScreen === "verify" && selectedPatient && selectedPanel === "matching" ? (
-          <MatchingPopup patient={selectedPatient} onClose={() => setSelectedId(null)} />
+          <MatchingPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
-        {activeScreen === "verify" && selectedPatient && selectedPanel === "verify" ? <PatientPanel patient={selectedPatient} onClose={() => setSelectedId(null)} /> : null}
+        {activeScreen === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
+          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription ? `PN-${selectedPatient?.vn}-${selectedPrescription.pn}` : undefined} onClose={closeSelectedItem} />
+        ) : null}
       </div>
     </main>
   );

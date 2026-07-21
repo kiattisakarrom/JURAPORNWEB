@@ -28,7 +28,7 @@ export function DispensingPopup({ patient, onClose }: { patient: PatientQueueIte
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/25 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 flex h-dvh justify-end bg-slate-950/25 backdrop-blur-[1px]">
       <button aria-label="ปิดหน้าจ่ายยา" className="hidden flex-1 cursor-default lg:block" onClick={closeTopLayer} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 sm:p-3 lg:w-auto">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
@@ -70,7 +70,7 @@ function DispensingContent({ dispensing, onOpenProfile }: { dispensing: Dispensi
         <div className="grid gap-3 sm:grid-cols-[180px_minmax(260px,1fr)] lg:w-[620px]">
           <Button className="bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={onOpenProfile} variant="secondary">
             <UserRound className="h-4 w-4" />
-            ดูโปรไฟล์
+            Subjective
           </Button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

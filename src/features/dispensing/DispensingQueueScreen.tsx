@@ -52,7 +52,7 @@ export function DispensingQueueScreen({ search }: { search: string }) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(176px,34dvh)_minmax(0,1fr)] md:grid-cols-[340px_minmax(0,1fr)] md:grid-rows-1 xl:grid-cols-[360px_minmax(0,1fr)]">
         <aside className="min-h-0 border-b border-slate-200 bg-white p-3 md:border-b-0 md:border-r md:p-4">
           <div className="flex h-full gap-3 overflow-x-auto md:flex-col md:overflow-y-auto">
             {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}

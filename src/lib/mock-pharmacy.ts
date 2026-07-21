@@ -8,13 +8,50 @@ export const mockPatients: PatientQueueItem[] = [
     name: "Patient A",
     priority: "Stat",
     stage: "verify",
-    medicationCount: 2,
+    medicationCount: 5,
     time: "08:05",
     durationMinutes: 10,
+    doctor: "พญ.ปาริชาติ ใจดี",
     alerts: ["duplicate", "interaction"],
     drugs: [
       { id: "a-1", name: "Atorvastatin 40mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
       { id: "a-2", name: "Amlodipine 5mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+      { id: "a-3", name: "Aspirin 81mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+      { id: "a-4", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+      { id: "a-5", name: "Folic Acid 5mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+    ],
+    prescriptions: [
+      {
+        id: "pt-a-pn-01",
+        pn: "01",
+        stage: "verify",
+        time: "08:05",
+        alerts: ["duplicate"],
+        drugs: [
+          { id: "a-1", name: "Atorvastatin 40mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+          { id: "a-2", name: "Amlodipine 5mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+        ],
+        issue: { kind: "duplicate", title: "Duplicate Drug", detail: "พบรายการยาซ้ำซ้อน กรุณาตรวจสอบ" },
+      },
+      {
+        id: "pt-a-pn-02",
+        pn: "02",
+        stage: "verify",
+        time: "08:07",
+        alerts: ["interaction"],
+        drugs: [{ id: "a-3", name: "Aspirin 81mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" }],
+      },
+      {
+        id: "pt-a-pn-03",
+        pn: "03",
+        stage: "verify",
+        time: "08:10",
+        alerts: [],
+        drugs: [
+          { id: "a-4", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+          { id: "a-5", name: "Folic Acid 5mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+        ],
+      },
     ],
     issue: {
       kind: "duplicate",
@@ -23,19 +60,73 @@ export const mockPatients: PatientQueueItem[] = [
     },
   },
   {
+    id: "pt-a-return",
+    vn: "240014",
+    hn: "123456",
+    name: "Patient A",
+    priority: "New",
+    stage: "verify",
+    medicationCount: 3,
+    time: "08:14",
+    durationMinutes: 12,
+    doctor: "พญ.ปาริชาติ ใจดี",
+    alerts: ["note"],
+    drugs: [
+      { id: "a-return-1", name: "Metformin 500mg", sig: "1x2 pc · 60 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+      { id: "a-return-2", name: "Vitamin B Complex", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+      { id: "a-return-3", name: "Calcium Carbonate 1500mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+    ],
+    prescriptions: [
+      {
+        id: "pt-a-return-pn-01",
+        pn: "01",
+        stage: "verify",
+        time: "08:14",
+        alerts: ["note"],
+        drugs: [{ id: "a-return-1", name: "Metformin 500mg", sig: "1x2 pc · 60 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" }],
+      },
+      {
+        id: "pt-a-return-pn-02",
+        pn: "02",
+        stage: "verify",
+        time: "08:16",
+        alerts: [],
+        drugs: [
+          { id: "a-return-2", name: "Vitamin B Complex", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+          { id: "a-return-3", name: "Calcium Carbonate 1500mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+        ],
+      },
+    ],
+  },
+  {
     id: "pt-b",
     vn: "240009",
-    hn: "901234",
+    hn: "423432",
     name: "Patient B",
     priority: "Stat",
     stage: "verify",
     medicationCount: 2,
     time: "08:05",
     durationMinutes: 15,
+    doctor: "นพ.ศุภชัย พรหมดี",
     alerts: ["interaction", "machine"],
     drugs: [
       { id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" },
       { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
+    ],
+    prescriptions: [
+      {
+        id: "pt-b-pn-01",
+        pn: "01",
+        stage: "verify",
+        time: "08:05",
+        alerts: ["interaction", "machine"],
+        drugs: [
+          { id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" },
+          { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
+        ],
+        issue: { kind: "machine", title: "Allergy / ADR", detail: "ผู้ป่วยมีประวัติแพ้ยา กรุณายืนยันกับแพทย์" },
+      },
     ],
     issue: {
       kind: "machine",
@@ -62,54 +153,31 @@ export const mockPatients: PatientQueueItem[] = [
   {
     id: "pt-c",
     vn: "240006",
-    hn: "678901",
+    hn: "756735",
     name: "Patient C",
     priority: "Re-work",
     stage: "verify",
     medicationCount: 2,
     time: "08:05",
     durationMinutes: 30,
+    doctor: "นพ.ธนากร วิริยะ",
     alerts: ["duplicate", "stock"],
     drugs: [
       { id: "c-1", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
       { id: "c-2", name: "Hydrochlorothiazide 25mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
     ],
-  },
-  {
-    id: "pt-d",
-    vn: "240003",
-    hn: "345678",
-    name: "Patient D",
-    priority: "New",
-    stage: "verify",
-    medicationCount: 2,
-    time: "08:05",
-    durationMinutes: 25,
-    alerts: ["note"],
-    drugs: [
-      { id: "d-1", name: "Metformin 500mg", sig: "1x2 pc · 60 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-      { id: "d-2", name: "Metformin 1000mg", sig: "1x1 hs · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-    ],
-    issue: {
-      kind: "note",
-      title: "Duplicate Drug",
-      detail: "พบรายการยาซ้ำซ้อน กรุณาตรวจสอบ",
-    },
-  },
-  {
-    id: "pt-e",
-    vn: "240012",
-    hn: "333444",
-    name: "Patient E",
-    priority: "New",
-    stage: "verify",
-    medicationCount: 2,
-    time: "08:05",
-    durationMinutes: 35,
-    alerts: ["note", "interaction"],
-    drugs: [
-      { id: "e-1", name: "Glipizide 5mg", sig: "1x1 ac · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-      { id: "e-2", name: "Vitamin B Complex", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
+    prescriptions: [
+      {
+        id: "pt-c-pn-01",
+        pn: "01",
+        stage: "verify",
+        time: "08:05",
+        alerts: ["duplicate", "stock"],
+        drugs: [
+          { id: "c-1", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+          { id: "c-2", name: "Hydrochlorothiazide 25mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+        ],
+      },
     ],
   },
   {
@@ -211,18 +279,16 @@ const stages: QueueStage[] = ["all", "verify", "picking", "matching", "checking"
 export function buildQueueResponse(): PharmacyQueueResponse {
   const summary = stages.reduce(
     (acc, stage) => {
-      acc[stage] = stage === "all" ? mockPatients.length : mockPatients.filter((patient) => patient.stage === stage).length;
+      acc[stage] =
+        stage === "all"
+          ? mockPatients.length
+          : stage === "verify"
+            ? mockPatients.reduce((total, patient) => total + (patient.stage === "verify" ? patient.prescriptions?.length ?? 1 : 0), 0)
+            : mockPatients.filter((patient) => patient.stage === stage).length;
       return acc;
     },
     {} as PharmacyQueueResponse["summary"],
   );
-
-  summary.verify = 7;
-  summary.picking = 1;
-  summary.matching = 1;
-  summary.checking = 1;
-  summary.pending = 1;
-  summary.complete = 1;
 
   return {
     generatedAt: new Date().toISOString(),

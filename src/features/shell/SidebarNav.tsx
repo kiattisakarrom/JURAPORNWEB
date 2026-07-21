@@ -14,7 +14,7 @@ export function SidebarNav({
   onSelect: (screen: WorkspaceScreen) => void;
 }) {
   return (
-    <aside className="fixed inset-x-0 bottom-0 z-40 flex h-16 border-t border-[#22345a] bg-[#0f1f3d] px-2 md:static md:inset-auto md:h-screen md:w-[76px] md:flex-col md:items-center md:border-r-0 md:border-t-0 md:px-0 md:py-[18px]">
+    <aside className="safe-bottom fixed inset-x-0 bottom-0 z-40 flex h-[calc(4rem+env(safe-area-inset-bottom))] border-t border-[#22345a] bg-[#0f1f3d] px-2 md:static md:inset-auto md:h-dvh md:w-[76px] md:flex-col md:items-center md:border-r-0 md:border-t-0 md:px-0 md:py-[18px]">
       <div className="mb-[14px] hidden h-[42px] w-[42px] items-center justify-center rounded-xl bg-gradient-to-br from-[#2f6bf3] to-[#1f9be0] text-white shadow-lg shadow-blue-950/30 md:flex">
         <Activity className="h-6 w-6" />
       </div>

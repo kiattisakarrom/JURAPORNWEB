@@ -54,7 +54,7 @@ export function WorkspaceHeader({
           <span className="h-2 w-2 rounded-full bg-[#16c172]" />
           <span className="font-sans text-xs font-bold tracking-[0.08em] text-[#16a35e]">LIVE</span>
         </div>
-        <div className="relative min-w-0 sm:w-72">
+        <div className="relative w-full min-w-0 sm:w-72">
           <Search className="absolute left-[13px] top-1/2 h-[17px] w-[17px] -translate-y-1/2 text-[#9aa7b8]" />
           <Input className="h-11 rounded-xl border-[1.5px] border-[#e1e7ef] bg-[#f8fafc] pl-10 text-sm shadow-none" placeholder="ค้นหา VN, HN, ชื่อผู้ป่วย" value={search} onChange={(event) => onSearch(event.target.value)} />
         </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, AlertTriangle, CheckCircle2, ClipboardCheck, FileText, Pill, Printer, RefreshCw, Search, ShieldAlert, Stethoscope, UserRound, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, FileText, Pill, Printer, RefreshCw, Search, ShieldAlert, Stethoscope, UserRound, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +31,57 @@ const hadChecklistItems = [
 
 type HadChecklistItemId = (typeof hadChecklistItems)[number]["id"];
 
+const medicationErrorCategories = [
+  {
+    id: "prescribing",
+    label: "Prescribing error",
+    options: [
+      { id: "wrong-drug", label: "สั่งยาผิดชนิด" },
+      { id: "wrong-quantity", label: "สั่งยาผิดจำนวน" },
+      { id: "wrong-strength", label: "สั่งยาผิดความแรง" },
+      { id: "dosage-too-low", label: "สั่งยาขนาดต่ำเกินไป (dosage too low)" },
+      { id: "dosage-too-high", label: "สั่งยาขนาดสูงเกินไป (dosage too high)" },
+      { id: "wrong-administration", label: "วิธีรับประทานยา/บริหารยาผิด" },
+      { id: "drug-interaction", label: "สั่งยาที่มี Drug interaction" },
+      { id: "duplicate-drug", label: "สั่งยาซ้ำซ้อน" },
+      { id: "omitted-drug", label: "ไม่ได้สั่งยา/สั่งยาไม่ครบ" },
+      { id: "allergy-risk", label: "สั่งยาที่มีโอกาสแพ้ยา" },
+      { id: "no-condition-adjustment", label: "ไม่ได้ปรับขนาดยาตามสภาวะผู้ป่วย" },
+      { id: "discontinued-drug", label: "สั่งยาที่มีการหยุดใช้ไปแล้ว" },
+      { id: "contraindicated-drug", label: "สั่งยาที่มีข้อห้ามใช้" },
+    ],
+  },
+  {
+    id: "pre-dispensing",
+    label: "Pre-dispensing error",
+    options: [
+      { id: "wrong-drug", label: "จัดยาผิดชนิด" },
+      { id: "wrong-quantity", label: "จัดยาผิดจำนวน" },
+      { id: "wrong-strength", label: "จัดยาผิดความแรง" },
+      { id: "omitted-drug", label: "ไม่ได้จัดยา/จัดยาไม่ครบรายการ" },
+      { id: "mixed-drug", label: "จัดยาปะปนกัน" },
+      { id: "wrong-label", label: "แปะฉลากยาผิด" },
+      { id: "wrong-patient", label: "จัดยาผิดคน" },
+    ],
+  },
+  {
+    id: "dispensing",
+    label: "Dispensing error",
+    options: [
+      { id: "wrong-patient", label: "จ่ายยาผิดคน" },
+      { id: "wrong-drug", label: "จ่ายยาผิดชนิด" },
+      { id: "wrong-quantity", label: "จ่ายยาผิดจำนวน" },
+      { id: "wrong-strength", label: "จ่ายยาผิดความแรง" },
+      { id: "omitted-drug", label: "จ่ายยาไม่ครบรายการ" },
+      { id: "mixed-drug", label: "จ่ายยาปะปนกัน" },
+      { id: "wrong-label", label: "จ่ายยาที่ติดฉลากผิด" },
+      { id: "wrong-patient-confirmation", label: "จ่ายยาผิดคน" },
+    ],
+  },
+] as const;
+
+type MedicationErrorCategoryId = (typeof medicationErrorCategories)[number]["id"];
+
 const medicationErrorSeverities = [
   { key: "A", th: "มีโอกาส/สถานการณ์ที่อาจก่อให้เกิดความคลาดเคลื่อน", category: "No Error", color: "#94a3b8" },
   { key: "B", th: "เกิดความคลาดเคลื่อน แต่ยังไม่ถึงผู้ป่วย", category: "No Harm", color: "#16a34a" },
@@ -45,13 +96,14 @@ const medicationErrorSeverities = [
 
 type MedicationErrorSeverityKey = (typeof medicationErrorSeverities)[number]["key"];
 
-export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; onClose: () => void }) {
+export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueItem; pn?: string; onClose: () => void }) {
   const [hasRequestedStockCheck, setHasRequestedStockCheck] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isHadOpen, setIsHadOpen] = useState(false);
   const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
   const [hadChecklist, setHadChecklist] = useState<Partial<Record<HadChecklistItemId, boolean>>>({});
-  const [medicationErrorAnswer, setMedicationErrorAnswer] = useState<boolean | null>(null);
+  const [medicationErrorCategory, setMedicationErrorCategory] = useState<MedicationErrorCategoryId | null>(null);
+  const [medicationErrorSubtype, setMedicationErrorSubtype] = useState<string | null>(null);
   const [medicationErrorSeverity, setMedicationErrorSeverity] = useState<MedicationErrorSeverityKey | null>(null);
   const [medicationErrorDescription, setMedicationErrorDescription] = useState("");
   const [note, setNote] = useState("");
@@ -61,7 +113,7 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
     queryFn: () => getPatientProfile(patient),
   });
   const { data: stockCheck, isFetching: isCheckingStock } = useQuery({
-    queryKey: ["machine-stock-check", patient.id],
+    queryKey: ["machine-stock-check", patient.id, pn],
     queryFn: () => getMachineStockCheck(patient),
     enabled: hasRequestedStockCheck,
   });
@@ -78,14 +130,14 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-[#0f1f3d]/35">
+    <div className="fixed inset-0 z-50 flex h-dvh justify-end bg-[#0f1f3d]/35">
       <button aria-label="ปิดแผงข้อมูลผู้ป่วย" className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 lg:w-auto lg:p-3">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
 
         <aside className="flex h-full w-full flex-col overflow-hidden bg-[#f6f8fb] shadow-[-18px_0_50px_rgba(15,31,61,0.22)] sm:max-w-[94vw] lg:w-[760px] lg:rounded-2xl lg:border lg:border-slate-200">
-          <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-5 sm:px-7">
-            <div className="flex items-start gap-4">
+          <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
+            <div className="flex items-start gap-3 sm:gap-4">
               <Button aria-label="ปิด" className="h-10 w-10 shrink-0 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
                 <X className="h-5 w-5" />
               </Button>
@@ -101,9 +153,32 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
                   <span>VN {displayProfile.vn}</span>
                   <span>HN {displayProfile.hn}</span>
+                  {pn ? <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-blue-700">{pn}</span> : null}
                   <span>{displayProfile.sex} · {displayProfile.age}</span>
-                  <span>แพทย์ {displayProfile.doctor}</span>
                 </div>
+              </div>
+              <Button
+                aria-label="เปิด Subjective"
+                className="h-10 w-10 shrink-0 rounded-xl sm:w-auto sm:px-3"
+                onClick={() => setIsProfileOpen(true)}
+                size="icon"
+                title="Subjective"
+                variant="secondary"
+              >
+                <UserRound className="h-4 w-4" />
+                <span className="hidden sm:inline">Subjective</span>
+              </Button>
+            </div>
+
+            <div className="mt-4 overflow-x-auto pb-1">
+              <div className="flex min-w-max items-stretch gap-2">
+                <div className="min-w-[156px] rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 shadow-sm">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">น้ำหนัก / ส่วนสูง</div>
+                  <div className="mt-1 text-sm font-black text-blue-900">{displayProfile.weight} · {displayProfile.height}</div>
+                </div>
+                {displayProfile.labs.map((lab) => (
+                  <LabChip key={lab.id} lab={lab} />
+                ))}
               </div>
             </div>
           </header>
@@ -122,36 +197,18 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
             <section className="mt-5 grid gap-3 sm:grid-cols-2">
               <InfoCard icon={<Stethoscope className="h-4 w-4" />} label="Ward / Clinic" value={displayProfile.ward} />
               <InfoCard icon={<FileText className="h-4 w-4" />} label="Diagnosis" value={displayProfile.diagnosis} />
-              <InfoCard label="น้ำหนัก / ส่วนสูง" value={`${displayProfile.weight} · ${displayProfile.height}`} />
+              <InfoCard icon={<UserRound className="h-4 w-4" />} label="แพทย์ผู้ดูแล" value={displayProfile.doctor} />
               <InfoCard label="Renal / DI" value={`${displayProfile.renal} · ${displayProfile.drugInteraction}`} />
             </section>
 
             <section className="mt-6">
-              <div className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-[0.12em] text-slate-400">
-                <Activity className="h-4 w-4 text-blue-600" />
-                LAB สำคัญ
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {displayProfile.labs.map((lab) => (
-                  <LabChip key={lab.id} lab={lab} />
-                ))}
-              </div>
-            </section>
-
-            <section className="mt-6">
-              <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-black text-slate-500">รายการยา ({patient.drugs.length})</h3>
-                  <p className="mt-1 text-xs font-bold text-slate-400">ตรวจสอบคำสั่งใช้ยา แหล่งจ่าย และ alert สำคัญก่อนส่งต่อ</p>
-                </div>
-                <Button className="h-10 rounded-xl" onClick={() => setIsProfileOpen(true)} variant="secondary">
-                  <UserRound className="h-4 w-4" />
-                  ดูโปรไฟล์
-                </Button>
+              <div className="mb-3">
+                <h3 className="text-sm font-black text-slate-500">รายการยา ({patient.drugs.length})</h3>
+                <p className="mt-1 text-xs font-bold text-slate-400">ตรวจสอบคำสั่งใช้ยา แหล่งจ่าย และ alert สำคัญก่อนส่งต่อ</p>
               </div>
 
               <div className="space-y-3">
-                {patient.drugs.map((drug, index) => {
+                {patient.drugs.map((drug) => {
                   const dose = splitDrugSig(drug.sig);
 
                   return (
@@ -164,7 +221,6 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <h4 className="text-lg font-black text-slate-950">{drug.name}</h4>
-                              {index === 0 && patient.priority === "Stat" ? <Badge className="bg-rose-100 text-rose-700">STAT</Badge> : null}
                             </div>
                             <p className="mt-1 text-sm font-semibold text-slate-500">{dose.instruction}</p>
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -233,7 +289,7 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
             </section>
           </div>
 
-          <footer className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-7">
+          <footer className="safe-bottom shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-7">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <Button className="h-11 rounded-xl border-slate-200" onClick={() => setIsHadOpen(true)} variant="outline">
                 <ClipboardCheck className="h-4 w-4" />
@@ -268,18 +324,23 @@ export function PatientPanel({ patient, onClose }: { patient: PatientQueueItem; 
 
       {isMedicationErrorOpen ? (
         <MedicationErrorReportModal
+          category={medicationErrorCategory}
           description={medicationErrorDescription}
-          onAnswerChange={(answer) => {
-            setMedicationErrorAnswer(answer);
-            if (!answer) setMedicationErrorSeverity(null);
+          onCategoryChange={(category) => {
+            setMedicationErrorCategory(category);
+            setMedicationErrorSubtype(null);
+            setMedicationErrorSeverity(null);
           }}
           onClose={() => setIsMedicationErrorOpen(false)}
           onDescriptionChange={setMedicationErrorDescription}
           onSave={() => setIsMedicationErrorOpen(false)}
           onSeverityChange={setMedicationErrorSeverity}
-          patient={patient}
-          selectedAnswer={medicationErrorAnswer}
           selectedSeverity={medicationErrorSeverity}
+          subtype={medicationErrorSubtype}
+          onSubtypeChange={(subtype) => {
+            setMedicationErrorSubtype(subtype);
+            setMedicationErrorSeverity("B");
+          }}
         />
       ) : null}
     </div>
@@ -421,28 +482,37 @@ function HadChecklistModal({
 }
 
 function MedicationErrorReportModal({
+  category,
   description,
-  onAnswerChange,
+  onCategoryChange,
   onClose,
   onDescriptionChange,
   onSave,
   onSeverityChange,
-  patient,
-  selectedAnswer,
   selectedSeverity,
+  subtype,
+  onSubtypeChange,
 }: {
+  category: MedicationErrorCategoryId | null;
   description: string;
-  onAnswerChange: (answer: boolean) => void;
+  onCategoryChange: (category: MedicationErrorCategoryId) => void;
   onClose: () => void;
   onDescriptionChange: (value: string) => void;
   onSave: () => void;
   onSeverityChange: (severity: MedicationErrorSeverityKey) => void;
-  patient: PatientQueueItem;
-  selectedAnswer: boolean | null;
   selectedSeverity: MedicationErrorSeverityKey | null;
+  subtype: string | null;
+  onSubtypeChange: (subtype: string) => void;
 }) {
+  const selectedCategory = medicationErrorCategories.find((item) => item.id === category);
+  const selectedSubtype = selectedCategory?.options.find((item) => item.id === subtype);
+  const selectionPath = [
+    selectedCategory?.label,
+    selectedSubtype?.label,
+    selectedSubtype && selectedSeverity ? `Severity ${selectedSeverity}` : undefined,
+  ].filter(Boolean).join(" › ");
   const descriptionReady = description.trim().length > 0;
-  const canSave = selectedAnswer !== null && descriptionReady && (selectedAnswer === false || Boolean(selectedSeverity));
+  const canSave = Boolean(category && subtype && selectedSeverity && descriptionReady);
 
   return (
     <div className="fixed inset-0 z-[72] flex items-center justify-center bg-[#0f1f3d]/45 p-4" onClick={onClose}>
@@ -453,9 +523,7 @@ function MedicationErrorReportModal({
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-black text-slate-900">รายงานความคลาดเคลื่อนทางยา</h3>
-            <p className="mt-1 truncate text-xs font-bold text-slate-400">
-              {patient.name} · VN {patient.vn} · HN {patient.hn} · จุดที่พบ: Verify{patient.drugs[0]?.name ? ` · ${patient.drugs[0].name}` : ""}
-            </p>
+            <p className="mt-1 text-xs font-bold leading-5 text-slate-400">{selectionPath || "เลือกประเภทความคลาดเคลื่อน"}</p>
           </div>
           <Button className="h-9 w-9 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
             <X className="h-4 w-4" />
@@ -463,27 +531,39 @@ function MedicationErrorReportModal({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className="mb-3 text-sm font-black text-slate-800">การแก้ไขครั้งนี้เป็น Medication Error หรือไม่?</div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <MedicationErrorAnswerButton
-              active={selectedAnswer === true}
-              icon={<AlertTriangle className="h-5 w-5" />}
-              label="Yes — เป็น ME"
-              onClick={() => onAnswerChange(true)}
-              tone="danger"
-            />
-            <MedicationErrorAnswerButton
-              active={selectedAnswer === false}
-              icon={<CheckCircle2 className="h-5 w-5" />}
-              label="No — แก้ไขทั่วไป"
-              onClick={() => onAnswerChange(false)}
-              tone="success"
-            />
+          <div className="mb-3 text-sm font-black text-slate-800">ประเภทความคลาดเคลื่อน</div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {medicationErrorCategories.map((item) => (
+              <MedicationErrorSelectionButton
+                active={category === item.id}
+                key={item.id}
+                label={item.label}
+                onClick={() => onCategoryChange(item.id)}
+              />
+            ))}
           </div>
 
-          {selectedAnswer === true ? (
+          {selectedCategory ? (
             <section className="mt-6">
-              <div className="text-sm font-black text-slate-800">ระดับความรุนแรง (NCC MERP)</div>
+              <div className="text-sm font-black text-slate-800">รายการความคลาดเคลื่อน</div>
+              <p className="mt-1 text-xs font-bold text-slate-400">เลือก 1 รายการจาก {selectedCategory.label}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {selectedCategory.options.map((option) => (
+                  <MedicationErrorSelectionButton
+                    active={subtype === option.id}
+                    compact
+                    key={`${selectedCategory.id}-${option.id}`}
+                    label={option.label}
+                    onClick={() => onSubtypeChange(option.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {selectedSubtype ? (
+            <section className="mt-6">
+              <div className="text-sm font-black text-slate-800">Severity</div>
               <p className="mt-1 text-xs font-bold text-slate-400">เลือก 1 ระดับ — A: ยังไม่เกิด · B-D: ไม่เป็นอันตราย · E-H: เป็นอันตราย · I: เสียชีวิต</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {medicationErrorSeverities.map((severity) => {
@@ -516,18 +596,6 @@ function MedicationErrorReportModal({
             </section>
           ) : null}
 
-          {selectedAnswer === false ? (
-            <section className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
-              <div className="flex gap-3">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-                <div>
-                  <div className="font-black">No — แก้ไขทั่วไป</div>
-                  <p className="mt-1 text-sm font-semibold leading-6">ไม่ต้องเลือกระดับ NCC MERP แต่ต้องระบุรายละเอียด/สาเหตุการแก้ไขก่อนบันทึกรายงาน</p>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
           <section className="mt-6">
             <label className="text-sm font-black text-slate-800" htmlFor="medication-error-description">
               รายละเอียด / สาเหตุการแก้ไข
@@ -541,11 +609,7 @@ function MedicationErrorReportModal({
             />
             {!canSave ? (
               <p className="mt-2 text-xs font-bold text-amber-600">
-                {selectedAnswer === true
-                  ? "กรุณาเลือกระดับความรุนแรงและกรอกรายละเอียดก่อนบันทึกรายงาน"
-                  : selectedAnswer === false
-                    ? "กรุณากรอกรายละเอียดก่อนบันทึกรายงาน"
-                    : "กรุณาเลือก Yes หรือ No และกรอกรายละเอียดก่อนบันทึกรายงาน"}
+                กรุณาเลือกประเภท รายการความคลาดเคลื่อน ระดับ Severity และกรอกรายละเอียดก่อนบันทึกรายงาน
               </p>
             ) : null}
           </section>
@@ -564,31 +628,27 @@ function MedicationErrorReportModal({
   );
 }
 
-function MedicationErrorAnswerButton({
+function MedicationErrorSelectionButton({
   active,
-  icon,
+  compact = false,
   label,
   onClick,
-  tone,
 }: {
   active: boolean;
-  icon: React.ReactNode;
+  compact?: boolean;
   label: string;
   onClick: () => void;
-  tone: "danger" | "success";
 }) {
-  const activeClassName = tone === "danger" ? "border-rose-500 bg-rose-50 text-rose-600" : "border-emerald-500 bg-emerald-50 text-emerald-700";
-
   return (
     <button
       className={cn(
-        "flex h-14 items-center justify-center gap-2 rounded-2xl border-2 bg-white px-4 text-base font-black text-slate-500 transition",
-        active ? activeClassName : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/40",
+        "flex items-center rounded-2xl border-2 bg-white px-4 font-black text-slate-500 transition",
+        compact ? "min-h-12 justify-start py-3 text-left text-sm leading-5" : "min-h-14 justify-center py-3 text-center text-sm",
+        active ? "border-rose-500 bg-rose-50 text-rose-700 shadow-sm" : "border-slate-200 hover:border-blue-200 hover:bg-blue-50/40",
       )}
       onClick={onClick}
       type="button"
     >
-      {icon}
       {label}
     </button>
   );
