@@ -2,6 +2,9 @@
 
 > วันที่ตรวจสอบ: 13 กรกฎาคม 2026  
 > ขอบเขต: ไฟล์ source code และ configuration ทั้งหมดของโปรเจกต์ (ไม่นับ generated files ใน `.next/`, dependencies ใน `node_modules/` และ metadata ใน `.git/`)
+>
+> **ลำดับการอ่าน:** อ่านไฟล์นี้ก่อน แล้วอ่าน [คู่มือทำงานต่อจากระบบเดิม](./CONTINUE_DEVELOPMENT.md)  
+> path ของ source code และ configuration ในเอกสารนี้อ้างอิงจาก project root
 
 ## 1. Executive Summary
 

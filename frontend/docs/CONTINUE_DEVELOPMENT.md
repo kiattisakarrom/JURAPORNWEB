@@ -1,12 +1,15 @@
 # JurapornWeb — คู่มือทำงานต่อจากระบบเดิม
 
 > ไฟล์นี้ใช้เป็น Development Handoff สำหรับส่งต่อให้ Developer หรือ AI Agent เพื่อพัฒนาระบบต่อ โดยไม่ต้องวิเคราะห์โครงสร้างใหม่ตั้งแต่ต้น
+>
+> **ลำดับการอ่าน:** อ่าน [Architecture, UI Theme และ Responsive Review](./ARCHITECTURE_REVIEW.md) ก่อน แล้วจึงอ่านไฟล์นี้  
+> path ของ source code และ configuration ในเอกสารนี้อ้างอิงจาก project root
 
 ## 1. คำสั่งเริ่มต้นสำหรับผู้รับช่วงงาน
 
 ก่อนแก้ไขโค้ด ให้ดำเนินการตามลำดับนี้:
 
-1. อ่าน `ARCHITECTURE_REVIEW.md` ให้ครบก่อนเริ่มงาน
+1. อ่าน [ARCHITECTURE_REVIEW.md](./ARCHITECTURE_REVIEW.md) ให้ครบก่อนเริ่มงาน
 2. ตรวจสอบ `git status` และรักษาการแก้ไขเดิมของผู้ใช้
 3. อ่านเฉพาะ feature และ dependencies ที่เกี่ยวข้องกับงานใหม่
 4. ห้ามเปลี่ยน Theme/UI เดิม เว้นแต่ได้รับคำสั่งชัดเจน
@@ -206,7 +209,7 @@ JurapornWeb หรือ PharmAuto OPD เป็น Frontend Prototype สำห
 [ระบุ endpoint, request, response หรือให้ใช้ mock data]
 
 ## UI Requirements
-- รักษา Theme เดิมตาม CONTINUE_DEVELOPMENT.md
+- รักษา Theme เดิมตาม frontend/docs/CONTINUE_DEVELOPMENT.md
 - รองรับ Mobile และ Desktop
 - ระบุ loading, empty, error และ disabled states
 
@@ -246,7 +249,7 @@ JurapornWeb หรือ PharmAuto OPD เป็น Frontend Prototype สำห
 โปรดพัฒนางานต่อในโปรเจกต์ JurapornWeb
 
 ก่อนเริ่มงาน:
-1. อ่าน ARCHITECTURE_REVIEW.md และ CONTINUE_DEVELOPMENT.md ให้ครบ
+1. อ่าน frontend/docs/ARCHITECTURE_REVIEW.md และ frontend/docs/CONTINUE_DEVELOPMENT.md ให้ครบ
 2. ตรวจ git status และรักษาการแก้ไขเดิมทั้งหมด
 3. อ่านเฉพาะ source files ที่เกี่ยวข้องกับงาน
 
@@ -265,8 +268,7 @@ JurapornWeb หรือ PharmAuto OPD เป็น Frontend Prototype สำห
 
 ## 12. เอกสารอ้างอิง
 
-- `ARCHITECTURE_REVIEW.md` — Architecture, file classification, Theme analysis และ technical debt
-- `CONTINUE_DEVELOPMENT.md` — กฎและ workflow สำหรับพัฒนาต่อ
-- `package.json` — Scripts และ dependencies ปัจจุบัน
-- `src/types/pharmacy.ts` — Domain contracts หลัก
-
+- [ARCHITECTURE_REVIEW.md](./ARCHITECTURE_REVIEW.md) — Architecture, file classification, Theme analysis และ technical debt
+- [CONTINUE_DEVELOPMENT.md](./CONTINUE_DEVELOPMENT.md) — กฎและ workflow สำหรับพัฒนาต่อ
+- [package.json](../../package.json) — Scripts และ dependencies ปัจจุบัน
+- [src/types/pharmacy.ts](../../src/types/pharmacy.ts) — Domain contracts หลัก
