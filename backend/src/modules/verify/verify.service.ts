@@ -27,6 +27,7 @@ interface VerifyQueryRow {
   COMMERCIALNAME: string | null;
   ORDERQTY: number | null;
   ORDERUNITCODE: string | null;
+  DOSEMEMO_TH: string | null;
 }
 
 interface VerifyPatientCountRow {
@@ -64,7 +65,8 @@ export class VerifyService {
         oi.MEDICINECODE,
         m.COMMERCIALNAME,
         oi.ORDERQTY,
-        oi.ORDERUNITCODE
+        oi.ORDERUNITCODE,
+        oi.DOSEMEMO_TH
       FROM dbo.TBLORX AS o
       LEFT JOIN dbo.TBLORXITEMS AS oi
         ON oi.VISITDATETIME = o.VISITDATETIME
@@ -95,6 +97,7 @@ export class VerifyService {
           COMMERCIALNAME: row.COMMERCIALNAME,
           ORDERQTY: row.ORDERQTY,
           ORDERUNITCODE: row.ORDERUNITCODE,
+          DOSEMEMO_TH: row.DOSEMEMO_TH,
         });
       }
 
@@ -165,7 +168,8 @@ export class VerifyService {
         oi.MEDICINECODE,
         m.COMMERCIALNAME,
         oi.ORDERQTY,
-        oi.ORDERUNITCODE
+        oi.ORDERUNITCODE,
+        oi.DOSEMEMO_TH
       FROM PagedPatients AS selectedPatients
       JOIN dbo.TBLORX AS o
         ON o.PATIENTID = selectedPatients.PATIENTID
@@ -307,6 +311,7 @@ export class VerifyService {
           COMMERCIALNAME: row.COMMERCIALNAME,
           ORDERQTY: row.ORDERQTY,
           ORDERUNITCODE: row.ORDERUNITCODE,
+          DOSEMEMO_TH: row.DOSEMEMO_TH,
         });
       }
     }

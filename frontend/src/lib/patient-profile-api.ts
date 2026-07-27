@@ -5,6 +5,15 @@ const MOCK_LATENCY_MS = 300;
 export async function getPatientProfile(patient: PatientQueueItem): Promise<PatientProfile> {
   await new Promise((resolve) => globalThis.setTimeout(resolve, MOCK_LATENCY_MS));
 
+  const vitalSignLabs: PatientProfile["labs"] = [
+    { id: `${patient.id}-lab-bpsys`, key: "BPSYS", value: patient.name === "Patient B" ? "116" : "128", unit: "mmHg" },
+    { id: `${patient.id}-lab-bpdias`, key: "BPDIAS", value: patient.name === "Patient B" ? "72" : "78", unit: "mmHg" },
+    { id: `${patient.id}-lab-temp`, key: "TEMP", value: "36.7", unit: "°C" },
+    { id: `${patient.id}-lab-pulserate`, key: "PULSERATE", value: patient.name === "Patient B" ? "82" : "76", unit: "bpm" },
+    { id: `${patient.id}-lab-respira`, key: "RESPIRA", value: "18", unit: "/min" },
+    { id: `${patient.id}-lab-o2sat`, key: "O2SAT", value: "98", unit: "%" },
+  ];
+
   // Replace this mock with a patient profile API when the backend is ready.
   // Example: return fetch(`/api/patient-profile?hn=${patient.hn}&vn=${patient.vn}`).then((res) => res.json());
   return {
@@ -41,6 +50,7 @@ export async function getPatientProfile(patient: PatientQueueItem): Promise<Pati
             { id: `${patient.id}-lab-hb`, key: "Hb", value: "11.2", unit: "g/dL" },
             { id: `${patient.id}-lab-scr`, key: "Scr", value: "0.8", unit: "mg/dL" },
             { id: `${patient.id}-lab-k`, key: "K+", value: "4.1", unit: "mmol/L" },
+            ...vitalSignLabs,
           ]
         : [
             { id: `${patient.id}-lab-egfr`, key: "eGFR", value: patient.alerts.includes("stock") ? "48" : "72", unit: "mL/min", high: patient.alerts.includes("stock") },
@@ -48,6 +58,7 @@ export async function getPatientProfile(patient: PatientQueueItem): Promise<Pati
             { id: `${patient.id}-lab-ast`, key: "AST", value: "32", unit: "U/L" },
             { id: `${patient.id}-lab-alt`, key: "ALT", value: "28", unit: "U/L" },
             { id: `${patient.id}-lab-k`, key: "K+", value: "4.2", unit: "mmol/L" },
+            ...vitalSignLabs,
           ],
     reconcile: [
       {

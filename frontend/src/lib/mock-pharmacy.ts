@@ -3,7 +3,7 @@ import type { PatientQueueItem, PharmacyQueueResponse, QueueStage } from "@/type
 export const mockPatients: PatientQueueItem[] = [
   {
     id: "pt-a",
-    vn: "240001",
+    vn: "423432",
     hn: "123456",
     name: "Patient A",
     priority: "Stat",
@@ -60,52 +60,13 @@ export const mockPatients: PatientQueueItem[] = [
     },
   },
   {
-    id: "pt-a-return",
-    vn: "240014",
-    hn: "123456",
-    name: "Patient A",
-    priority: "New",
-    stage: "verify",
-    medicationCount: 3,
-    time: "08:14",
-    durationMinutes: 12,
-    doctor: "พญ.ปาริชาติ ใจดี",
-    alerts: ["note"],
-    drugs: [
-      { id: "a-return-1", name: "Metformin 500mg", sig: "1x2 pc · 60 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-      { id: "a-return-2", name: "Vitamin B Complex", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
-      { id: "a-return-3", name: "Calcium Carbonate 1500mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
-    ],
-    prescriptions: [
-      {
-        id: "pt-a-return-pn-01",
-        pn: "01",
-        stage: "verify",
-        time: "08:14",
-        alerts: ["note"],
-        drugs: [{ id: "a-return-1", name: "Metformin 500mg", sig: "1x2 pc · 60 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" }],
-      },
-      {
-        id: "pt-a-return-pn-02",
-        pn: "02",
-        stage: "verify",
-        time: "08:16",
-        alerts: [],
-        drugs: [
-          { id: "a-return-2", name: "Vitamin B Complex", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
-          { id: "a-return-3", name: "Calcium Carbonate 1500mg", sig: "1x1 pc · 30 เม็ด", source: "Manual Pick", machineCode: "Shelf" },
-        ],
-      },
-    ],
-  },
-  {
     id: "pt-b",
-    vn: "240009",
+    vn: "756735",
     hn: "423432",
     name: "Patient B",
     priority: "Stat",
     stage: "verify",
-    medicationCount: 2,
+    medicationCount: 3,
     time: "08:05",
     durationMinutes: 15,
     doctor: "นพ.ศุภชัย พรหมดี",
@@ -113,6 +74,7 @@ export const mockPatients: PatientQueueItem[] = [
     drugs: [
       { id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" },
       { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
+      { id: "b-3", name: "Rosuvastatin 10mg", sig: "1x1 hs · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
     ],
     prescriptions: [
       {
@@ -120,12 +82,20 @@ export const mockPatients: PatientQueueItem[] = [
         pn: "01",
         stage: "verify",
         time: "08:05",
-        alerts: ["interaction", "machine"],
-        drugs: [
-          { id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" },
-          { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
-        ],
+        alerts: ["machine"],
+        drugs: [{ id: "b-1", name: "Clopidogrel 75mg", sig: "1x1 od · 30 เม็ด", source: "Blister Packer", machineCode: "BD-700" }],
         issue: { kind: "machine", title: "Allergy / ADR", detail: "ผู้ป่วยมีประวัติแพ้ยา กรุณายืนยันกับแพทย์" },
+      },
+      {
+        id: "pt-b-pn-02",
+        pn: "02",
+        stage: "verify",
+        time: "08:08",
+        alerts: ["interaction"],
+        drugs: [
+          { id: "b-2", name: "Omeprazole 20mg", sig: "1x1 ac · 30 แคปซูล", source: "Blister Packer", machineCode: "BD-700" },
+          { id: "b-3", name: "Rosuvastatin 10mg", sig: "1x1 hs · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
+        ],
       },
     ],
     issue: {
@@ -152,19 +122,18 @@ export const mockPatients: PatientQueueItem[] = [
   },
   {
     id: "pt-c",
-    vn: "240006",
+    vn: "452345",
     hn: "756735",
     name: "Patient C",
     priority: "Re-work",
     stage: "verify",
-    medicationCount: 2,
+    medicationCount: 1,
     time: "08:05",
     durationMinutes: 30,
     doctor: "นพ.ธนากร วิริยะ",
     alerts: ["duplicate", "stock"],
     drugs: [
       { id: "c-1", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-      { id: "c-2", name: "Hydrochlorothiazide 25mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
     ],
     prescriptions: [
       {
@@ -173,10 +142,7 @@ export const mockPatients: PatientQueueItem[] = [
         stage: "verify",
         time: "08:05",
         alerts: ["duplicate", "stock"],
-        drugs: [
-          { id: "c-1", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-          { id: "c-2", name: "Hydrochlorothiazide 25mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" },
-        ],
+        drugs: [{ id: "c-1", name: "Losartan 50mg", sig: "1x1 pc · 30 เม็ด", source: "Box Dispenser", machineCode: "D5Pro" }],
       },
     ],
   },

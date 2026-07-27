@@ -58,7 +58,8 @@ Response `200 OK`:
               "MEDICINECODE": "{MEDICINECODE}",
               "COMMERCIALNAME": "{COMMERCIALNAME}",
               "ORDERQTY": 1,
-              "ORDERUNITCODE": "{ORDERUNITCODE}"
+              "ORDERUNITCODE": "{ORDERUNITCODE}",
+              "DOSEMEMO_TH": "{DOSEMEMO_TH}"
             }
           ]
         }
@@ -118,7 +119,8 @@ Response `200 OK`:
       "MEDICINECODE": "{MEDICINECODE}",
       "COMMERCIALNAME": "{COMMERCIALNAME}",
       "ORDERQTY": 1,
-      "ORDERUNITCODE": "{ORDERUNITCODE}"
+      "ORDERUNITCODE": "{ORDERUNITCODE}",
+      "DOSEMEMO_TH": "{DOSEMEMO_TH}"
     }
   ]
 }

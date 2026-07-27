@@ -27,6 +27,7 @@ describe('VerifyService', () => {
             COMMERCIALNAME: 'Medicine A',
             ORDERQTY: 10,
             ORDERUNITCODE: 'TAB',
+            DOSEMEMO_TH: 'รับประทานครั้งละ 1 เม็ด หลังอาหาร',
           },
           {
             VISITDATETIME: new Date('2026-07-14T00:00:00.000Z'),
@@ -41,6 +42,7 @@ describe('VerifyService', () => {
             COMMERCIALNAME: 'Medicine B',
             ORDERQTY: 5,
             ORDERUNITCODE: 'CAP',
+            DOSEMEMO_TH: null,
           },
         ],
       }),
@@ -56,6 +58,9 @@ describe('VerifyService', () => {
     expect(result.PATIENT.PATIENTID).toBe('HN0001');
     expect(result.DOCTOR.DOCTORCODE).toBe('DR001');
     expect(result.ITEMS).toHaveLength(2);
+    expect(result.ITEMS[0].DOSEMEMO_TH).toBe(
+      'รับประทานครั้งละ 1 เม็ด หลังอาหาร',
+    );
     expect(request.input).toHaveBeenCalledTimes(3);
   });
 
@@ -98,6 +103,7 @@ describe('VerifyService', () => {
             COMMERCIALNAME: 'Medicine A',
             ORDERQTY: 10,
             ORDERUNITCODE: 'TAB',
+            DOSEMEMO_TH: 'รับประทานครั้งละ 1 เม็ด หลังอาหาร',
           },
           {
             VISITDATETIME: new Date('2026-07-14T00:00:00.000Z'),
@@ -112,6 +118,7 @@ describe('VerifyService', () => {
             COMMERCIALNAME: null,
             ORDERQTY: 5,
             ORDERUNITCODE: 'CAP',
+            DOSEMEMO_TH: null,
           },
         ],
       }),
@@ -134,6 +141,9 @@ describe('VerifyService', () => {
     expect(result.PATIENTS).toHaveLength(1);
     expect(result.PATIENTS[0].PRESCRIPTIONS).toHaveLength(1);
     expect(result.PATIENTS[0].PRESCRIPTIONS[0].ITEMS).toHaveLength(2);
+    expect(
+      result.PATIENTS[0].PRESCRIPTIONS[0].ITEMS[0].DOSEMEMO_TH,
+    ).toBe('รับประทานครั้งละ 1 เม็ด หลังอาหาร');
     expect(countRequest.input).toHaveBeenCalledWith(
       'patientId',
       expect.anything(),

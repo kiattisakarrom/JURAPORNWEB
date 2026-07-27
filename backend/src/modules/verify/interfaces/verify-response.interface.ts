@@ -14,6 +14,7 @@ export interface VerifyItem {
   COMMERCIALNAME: string | null;
   ORDERQTY: number | null;
   ORDERUNITCODE: string | null;
+  DOSEMEMO_TH: string | null;
 }
 
 export interface VerifyResponse {

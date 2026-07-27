@@ -119,6 +119,8 @@ export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueIt
   });
 
   const displayProfile = useMemo(() => buildInlineProfile(patient, profile), [patient, profile]);
+  const headerLabs = useMemo(() => buildHeaderLabs(patient.id, displayProfile.labs), [displayProfile.labs, patient.id]);
+  const bmi = calculateBmi(displayProfile.weight, displayProfile.height);
   const completedHadCount = hadChecklistItems.filter((item) => hadChecklist[item.id]).length;
 
   function requestStockCheck() {
@@ -153,7 +155,7 @@ export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueIt
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
                   <span>VN {displayProfile.vn}</span>
                   <span>HN {displayProfile.hn}</span>
-                  {pn ? <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-blue-700">{pn}</span> : null}
+                  {pn ? <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-blue-700">PN {pn}</span> : null}
                   <span>{displayProfile.sex} · {displayProfile.age}</span>
                 </div>
               </div>
@@ -172,11 +174,13 @@ export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueIt
 
             <div className="mt-4 overflow-x-auto pb-1">
               <div className="flex min-w-max items-stretch gap-2">
-                <div className="min-w-[156px] rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 shadow-sm">
-                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">น้ำหนัก / ส่วนสูง</div>
-                  <div className="mt-1 text-sm font-black text-blue-900">{displayProfile.weight} · {displayProfile.height}</div>
+                <div className="min-w-[230px] rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 shadow-sm">
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">น้ำหนัก / ส่วนสูง / BMI</div>
+                  <div className="mt-1 text-sm font-black text-blue-900">
+                    {displayProfile.weight} · {displayProfile.height} · BMI {bmi}
+                  </div>
                 </div>
-                {displayProfile.labs.map((lab) => (
+                {headerLabs.map((lab) => (
                   <LabChip key={lab.id} lab={lab} />
                 ))}
               </div>
@@ -375,6 +379,47 @@ function fallbackLabs(patient: PatientQueueItem): PatientLabResult[] {
     { id: `${patient.id}-fallback-k`, key: "K+", value: "4.2", unit: "mmol/L" },
     { id: `${patient.id}-fallback-alt`, key: "ALT", value: "28", unit: "U/L" },
   ];
+}
+
+const headerLabDefaults = [
+  { key: "EGFR", value: "74", unit: "mL/min" },
+  { key: "SCR", value: "0.9", unit: "mg/dL" },
+  { key: "BPSYS", value: "128", unit: "mmHg" },
+  { key: "BPDIAS", value: "78", unit: "mmHg" },
+  { key: "TEMP", value: "36.7", unit: "°C" },
+  { key: "PULSERATE", value: "76", unit: "bpm" },
+  { key: "RESPIRA", value: "18", unit: "/min" },
+  { key: "O2SAT", value: "98", unit: "%" },
+] as const;
+
+function buildHeaderLabs(patientId: string, labs: PatientLabResult[]): PatientLabResult[] {
+  return headerLabDefaults.map((defaultLab) => {
+    const existingLab = labs.find((lab) => normalizeLabKey(lab.key) === defaultLab.key);
+
+    return existingLab
+      ? { ...existingLab, key: defaultLab.key }
+      : {
+          id: `${patientId}-header-${defaultLab.key.toLowerCase()}`,
+          key: defaultLab.key,
+          value: defaultLab.value,
+          unit: defaultLab.unit,
+        };
+  });
+}
+
+function normalizeLabKey(key: string) {
+  return key.replace(/[^a-z0-9]/gi, "").toUpperCase();
+}
+
+function calculateBmi(weight: string, height: string) {
+  const weightKg = Number.parseFloat(weight);
+  const heightCm = Number.parseFloat(height);
+
+  if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || heightCm <= 0) {
+    return "ไม่ระบุ";
+  }
+
+  return (weightKg / ((heightCm / 100) ** 2)).toFixed(1);
 }
 
 function LabChip({ lab }: { lab: PatientLabResult }) {

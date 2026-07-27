@@ -80,7 +80,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       const matchesSearch =
         !keyword ||
         [patient.vn, patient.hn, patient.name].some((value) => value.toLowerCase().includes(keyword)) ||
-        patient.prescriptions?.some((prescription) => `pn ${prescription.pn}`.includes(keyword) || prescription.pn.includes(keyword));
+        patient.prescriptions?.some((prescription) =>
+          [`pn ${prescription.pn}`, `pn-${patient.vn}-${prescription.pn}`, prescription.pn].some((value) => value.includes(keyword)),
+        );
       return matchesTab && matchesSearch;
     });
   }, [activeTab, patients, search]);
@@ -182,7 +184,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           <MatchingPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
         {activeScreen === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
-          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription ? `PN-${selectedPatient?.vn}-${selectedPrescription.pn}` : undefined} onClose={closeSelectedItem} />
+          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription?.pn} onClose={closeSelectedItem} />
         ) : null}
       </div>
     </main>
