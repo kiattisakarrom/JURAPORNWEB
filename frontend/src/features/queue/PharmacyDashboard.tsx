@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, ClipboardCheck, FileWarning, ListChecks, Pill } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
 import { DispensingQueueScreen } from "@/features/dispensing/DispensingQueueScreen";
 import { MedicationErrorScreen } from "@/features/medication-error/MedicationErrorScreen";
@@ -65,6 +66,8 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<string | null>(null);
+  const [verifiedPrescriptionIds, setVerifiedPrescriptionIds] = useState<Set<string>>(() => new Set());
+  const [sentToMatchingPatientIds, setSentToMatchingPatientIds] = useState<Set<string>>(() => new Set());
   const liveTime = useLiveClock();
   const { data, isLoading } = useQuery({
     queryKey: ["pharmacy-queue"],
@@ -130,6 +133,22 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     setSelectedPrescriptionId(null);
   }
 
+  function verifySelectedPrescription() {
+    if (!selectedPrescription) return;
+
+    setVerifiedPrescriptionIds((current) => new Set(current).add(selectedPrescription.id));
+    toast.success(`PN ${selectedPrescription.pn} Verify และส่ง MDR แล้ว`);
+    closeSelectedItem();
+  }
+
+  function sendPatientToMatching(patientId: string) {
+    const patient = patients.find((item) => item.id === patientId);
+    if (!patient) return;
+
+    setSentToMatchingPatientIds((current) => new Set(current).add(patientId));
+    toast.success(`VN ${patient.vn} Verify แล้ว`);
+  }
+
   const activeItem = workspaceItems.find((item) => item.id === activeScreen) ?? workspaceItems[0];
 
   return (
@@ -162,8 +181,23 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
               </nav>
 
               <section className="h-full min-h-0 overflow-hidden bg-white">
-                <QueueTable isLoading={isLoading} patients={filteredPatients} selectedId={selectedPatient?.id} onSelect={selectQueueItem} />
-                <MobileQueueList patients={filteredPatients} selectedId={selectedPatient?.id} onSelect={selectQueueItem} />
+                <QueueTable
+                  isLoading={isLoading}
+                  patients={filteredPatients}
+                  selectedId={selectedPatient?.id}
+                  sentToMatchingPatientIds={sentToMatchingPatientIds}
+                  verifiedPrescriptionIds={verifiedPrescriptionIds}
+                  onSelect={selectQueueItem}
+                  onSendMatching={sendPatientToMatching}
+                />
+                <MobileQueueList
+                  patients={filteredPatients}
+                  selectedId={selectedPatient?.id}
+                  sentToMatchingPatientIds={sentToMatchingPatientIds}
+                  verifiedPrescriptionIds={verifiedPrescriptionIds}
+                  onSelect={selectQueueItem}
+                  onSendMatching={sendPatientToMatching}
+                />
               </section>
             </div>
           ) : null}
@@ -184,7 +218,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           <MatchingPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
         {activeScreen === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
-          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription?.pn} onClose={closeSelectedItem} />
+          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription?.pn} onClose={closeSelectedItem} onVerify={verifySelectedPrescription} />
         ) : null}
       </div>
     </main>

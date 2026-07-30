@@ -10,6 +10,7 @@ export interface VerifyDoctor {
 
 export interface VerifyItem {
   ITEMSEQ: number;
+  CREATEDATETIME: string | null;
   MEDICINECODE: string;
   COMMERCIALNAME: string | null;
   ORDERQTY: number | null;
@@ -18,9 +19,12 @@ export interface VerifyItem {
 }
 
 export interface VerifyResponse {
+  CREATEDATETIME: string | null;
   VISITDATETIME: string;
   VISITNUMBER: string;
   PRESCRIPTIONNUMBER: string;
+  CLINIC_CODE: string | null;
+  LOCALWARDNAME: string | null;
   PATIENT: VerifyPatient;
   DOCTOR: VerifyDoctor;
   ITEMS: VerifyItem[];

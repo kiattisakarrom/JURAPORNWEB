@@ -15,14 +15,18 @@ import {
 import { VerifyItem, VerifyResponse } from './interfaces/verify-response.interface';
 
 interface VerifyQueryRow {
+  PRESCRIPTION_CREATEDATETIME: Date | string | null;
   VISITDATETIME: Date | string;
   VISITNUMBER: string;
   PRESCRIPTIONNUMBER: string;
+  CLINIC_CODE: string | null;
+  LOCALWARDNAME: string | null;
   PATIENTID: string | null;
   FULLNAME_TH: string | null;
   DOCTORCODE: string | null;
   LOCALDOCTORNAME: string | null;
   ITEMSEQ: number | null;
+  ITEM_CREATEDATETIME: Date | string | null;
   MEDICINECODE: string | null;
   COMMERCIALNAME: string | null;
   ORDERQTY: number | null;
@@ -54,14 +58,18 @@ export class VerifyService {
 
     const result = await request.query<VerifyQueryRow>(`
       SELECT
+        o.CREATEDATETIME AS PRESCRIPTION_CREATEDATETIME,
         o.VISITDATETIME,
         o.VISITNUMBER,
         o.PRESCRIPTIONNUMBER,
+        o.CLINIC_CODE,
+        dept.LOCALWARDNAME,
         COALESCE(o.PATIENTID, oi.PATIENTID) AS PATIENTID,
         p.FULLNAME_TH,
         d.DOCTORCODE,
         d.LOCALDOCTORNAME,
         oi.ITEMSEQ,
+        oi.CREATEDATETIME AS ITEM_CREATEDATETIME,
         oi.MEDICINECODE,
         m.COMMERCIALNAME,
         oi.ORDERQTY,
@@ -78,6 +86,8 @@ export class VerifyService {
         ON m.MEDICINECODE = oi.MEDICINECODE
       LEFT JOIN dbo.TBLDOCTOR AS d
         ON d.DOCTORCODE = o.DOCTORORDERCODE
+      LEFT JOIN dbo.TBLDEPT AS dept
+        ON dept.DEPTCODE = o.CLINIC_CODE
       WHERE o.VISITDATETIME = @visitDate
         AND o.VISITNUMBER = @visitNumber
         AND o.PRESCRIPTIONNUMBER = @prescriptionNumber
@@ -93,6 +103,7 @@ export class VerifyService {
       if (row.ITEMSEQ !== null && row.MEDICINECODE !== null) {
         accumulator.push({
           ITEMSEQ: row.ITEMSEQ,
+          CREATEDATETIME: this.toIsoDateTime(row.ITEM_CREATEDATETIME),
           MEDICINECODE: row.MEDICINECODE,
           COMMERCIALNAME: row.COMMERCIALNAME,
           ORDERQTY: row.ORDERQTY,
@@ -105,9 +116,14 @@ export class VerifyService {
     }, []);
 
     return {
+      CREATEDATETIME: this.toIsoDateTime(
+        firstRow.PRESCRIPTION_CREATEDATETIME,
+      ),
       VISITDATETIME: this.toDateOnly(firstRow.VISITDATETIME),
       VISITNUMBER: firstRow.VISITNUMBER,
       PRESCRIPTIONNUMBER: firstRow.PRESCRIPTIONNUMBER,
+      CLINIC_CODE: firstRow.CLINIC_CODE,
+      LOCALWARDNAME: firstRow.LOCALWARDNAME,
       PATIENT: {
         PATIENTID: firstRow.PATIENTID,
         FULLNAME_TH: firstRow.FULLNAME_TH,
@@ -157,14 +173,18 @@ export class VerifyService {
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       )
       SELECT
+        o.CREATEDATETIME AS PRESCRIPTION_CREATEDATETIME,
         o.VISITDATETIME,
         o.VISITNUMBER,
         o.PRESCRIPTIONNUMBER,
+        o.CLINIC_CODE,
+        dept.LOCALWARDNAME,
         o.PATIENTID,
         p.FULLNAME_TH,
         d.DOCTORCODE,
         d.LOCALDOCTORNAME,
         oi.ITEMSEQ,
+        oi.CREATEDATETIME AS ITEM_CREATEDATETIME,
         oi.MEDICINECODE,
         m.COMMERCIALNAME,
         oi.ORDERQTY,
@@ -183,9 +203,12 @@ export class VerifyService {
         ON m.MEDICINECODE = oi.MEDICINECODE
       LEFT JOIN dbo.TBLDOCTOR AS d
         ON d.DOCTORCODE = o.DOCTORORDERCODE
+      LEFT JOIN dbo.TBLDEPT AS dept
+        ON dept.DEPTCODE = o.CLINIC_CODE
       WHERE ${whereClause}
       ORDER BY
         o.PATIENTID,
+        o.CREATEDATETIME DESC,
         o.VISITDATETIME DESC,
         o.VISITNUMBER,
         o.PRESCRIPTIONNUMBER,
@@ -241,9 +264,9 @@ export class VerifyService {
     }
 
     if (query.fromDate && query.toDate) {
-      conditions.push('o.VISITDATETIME >= @fromDate');
+      conditions.push('o.CREATEDATETIME >= @fromDate');
       conditions.push(
-        'o.VISITDATETIME < DATEADD(DAY, 1, @toDate)',
+        'o.CREATEDATETIME < DATEADD(DAY, 1, @toDate)',
       );
     }
 
@@ -291,9 +314,14 @@ export class VerifyService {
       let prescription = prescriptionMap.get(prescriptionKey);
       if (!prescription) {
         prescription = {
+          CREATEDATETIME: this.toIsoDateTime(
+            row.PRESCRIPTION_CREATEDATETIME,
+          ),
           VISITDATETIME: visitDate,
           VISITNUMBER: row.VISITNUMBER,
           PRESCRIPTIONNUMBER: row.PRESCRIPTIONNUMBER,
+          CLINIC_CODE: row.CLINIC_CODE,
+          LOCALWARDNAME: row.LOCALWARDNAME,
           DOCTOR: {
             DOCTORCODE: row.DOCTORCODE,
             LOCALDOCTORNAME: row.LOCALDOCTORNAME,
@@ -307,6 +335,7 @@ export class VerifyService {
       if (row.ITEMSEQ !== null && row.MEDICINECODE !== null) {
         prescription.ITEMS.push({
           ITEMSEQ: row.ITEMSEQ,
+          CREATEDATETIME: this.toIsoDateTime(row.ITEM_CREATEDATETIME),
           MEDICINECODE: row.MEDICINECODE,
           COMMERCIALNAME: row.COMMERCIALNAME,
           ORDERQTY: row.ORDERQTY,
@@ -325,5 +354,17 @@ export class VerifyService {
     }
 
     return value.slice(0, 10);
+  }
+
+  private toIsoDateTime(value: Date | string | null): string | null {
+    if (value === null) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+
+    return new Date(value).toISOString();
   }
 }

@@ -17,8 +17,8 @@ Query parameters:
 | Field | Required | Description |
 |---|---:|---|
 | `patientId` | Conditional | กรองด้วย `TBLORX.PATIENTID` ความยาวไม่เกิน 15 ตัวอักษร |
-| `fromDate` | Conditional | วันเริ่มต้นรูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `toDate` |
-| `toDate` | Conditional | วันสิ้นสุดรูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `fromDate` |
+| `fromDate` | Conditional | วันเริ่มต้นของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `toDate` |
+| `toDate` | Conditional | วันสิ้นสุดของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `fromDate` |
 | `page` | No | หน้าของรายชื่อผู้ป่วย ค่าเริ่มต้น 1 |
 | `limit` | No | จำนวนผู้ป่วยต่อหน้า 1–100 ค่าเริ่มต้น 20 |
 
@@ -45,9 +45,12 @@ Response `200 OK`:
       "FULLNAME_TH": "{FULLNAME_TH}",
       "PRESCRIPTIONS": [
         {
+          "CREATEDATETIME": "2026-07-14T07:45:00.000Z",
           "VISITDATETIME": "2026-07-14",
           "VISITNUMBER": "{VISITNUMBER}",
           "PRESCRIPTIONNUMBER": "{PRESCRIPTIONNUMBER}",
+          "CLINIC_CODE": "{CLINIC_CODE}",
+          "LOCALWARDNAME": "{LOCALWARDNAME}",
           "DOCTOR": {
             "DOCTORCODE": "{DOCTORCODE}",
             "LOCALDOCTORNAME": "{LOCALDOCTORNAME}"
@@ -55,6 +58,7 @@ Response `200 OK`:
           "ITEMS": [
             {
               "ITEMSEQ": 1,
+              "CREATEDATETIME": "2026-07-14T08:30:00.000Z",
               "MEDICINECODE": "{MEDICINECODE}",
               "COMMERCIALNAME": "{COMMERCIALNAME}",
               "ORDERQTY": 1,
@@ -102,9 +106,12 @@ Response `200 OK`:
 
 ```json
 {
+  "CREATEDATETIME": "2026-07-14T07:45:00.000Z",
   "VISITDATETIME": "2026-07-14",
   "VISITNUMBER": "{VISITNUMBER}",
   "PRESCRIPTIONNUMBER": "{PRESCRIPTIONNUMBER}",
+  "CLINIC_CODE": "{CLINIC_CODE}",
+  "LOCALWARDNAME": "{LOCALWARDNAME}",
   "PATIENT": {
     "PATIENTID": "{PATIENTID}",
     "FULLNAME_TH": "{FULLNAME_TH}"
@@ -116,6 +123,7 @@ Response `200 OK`:
   "ITEMS": [
     {
       "ITEMSEQ": 1,
+      "CREATEDATETIME": "2026-07-14T08:30:00.000Z",
       "MEDICINECODE": "{MEDICINECODE}",
       "COMMERCIALNAME": "{COMMERCIALNAME}",
       "ORDERQTY": 1,
@@ -132,6 +140,7 @@ Database relationships:
 TBLORX
   ├─ TBLORXITEMS       VISITDATETIME + VISITNUMBER + PRESCRIPTIONNUMBER
   ├─ TBLDOCTOR         DOCTORORDERCODE = DOCTORCODE
+  ├─ TBLDEPT           CLINIC_CODE = DEPTCODE
   └─ TBLPATIENT        PATIENTID
 
 TBLORXITEMS

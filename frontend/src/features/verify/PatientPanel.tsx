@@ -96,7 +96,17 @@ const medicationErrorSeverities = [
 
 type MedicationErrorSeverityKey = (typeof medicationErrorSeverities)[number]["key"];
 
-export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueItem; pn?: string; onClose: () => void }) {
+export function PatientPanel({
+  patient,
+  pn,
+  onClose,
+  onVerify,
+}: {
+  patient: PatientQueueItem;
+  pn?: string;
+  onClose: () => void;
+  onVerify: () => void;
+}) {
   const [hasRequestedStockCheck, setHasRequestedStockCheck] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isHadOpen, setIsHadOpen] = useState(false);
@@ -308,7 +318,7 @@ export function PatientPanel({ patient, pn, onClose }: { patient: PatientQueueIt
                 <RefreshCw className="h-4 w-4" />
                 รายงาน ME
               </Button>
-              <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700">
+              <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={onVerify}>
                 <CheckCircle2 className="h-4 w-4" />
                 Verify & ส่ง MDR
               </Button>

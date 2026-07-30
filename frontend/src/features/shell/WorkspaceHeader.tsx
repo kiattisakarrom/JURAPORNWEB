@@ -1,6 +1,7 @@
 "use client";
 
-import { Activity, Clock3, LogOut, Search } from "lucide-react";
+import { Activity, CalendarDays, Clock3, LogOut, Search } from "lucide-react";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,15 @@ export function WorkspaceHeader({
   onLogout: () => void;
   onSearch: (value: string) => void;
 }) {
+  const today = getBangkokDate();
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
+
+  function updateStartDate(value: string) {
+    setStartDate(value);
+    if (endDate && value > endDate) setEndDate(value);
+  }
+
   return (
     <header className="relative z-30 shrink-0 border-b border-[#e6eaf0] bg-white">
       <div className="flex min-h-[78px] flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:gap-[22px] lg:px-[26px]">
@@ -48,6 +58,34 @@ export function WorkspaceHeader({
 
         <div className="flex-1" />
 
+        <div
+          aria-label="เลือกช่วงวันที่"
+          className="flex w-full items-center gap-1.5 rounded-xl border border-[#e1e7ef] bg-[#f8fafc] px-2 py-1.5 sm:w-auto"
+        >
+          <CalendarDays className="h-[17px] w-[17px] shrink-0 text-[#7b8ba1]" />
+          <label className="min-w-0 flex-1 sm:flex-none">
+            <span className="sr-only">วันที่เริ่มต้น</span>
+            <input
+              className="h-8 w-full min-w-0 rounded-lg border-0 bg-transparent px-1 font-mono text-xs font-bold text-[#26344a] outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 sm:w-[122px]"
+              max={endDate || undefined}
+              onChange={(event) => updateStartDate(event.target.value)}
+              type="date"
+              value={startDate}
+            />
+          </label>
+          <span className="shrink-0 text-xs font-black text-[#9aa7b8]">–</span>
+          <label className="min-w-0 flex-1 sm:flex-none">
+            <span className="sr-only">วันที่สิ้นสุด</span>
+            <input
+              className="h-8 w-full min-w-0 rounded-lg border-0 bg-transparent px-1 font-mono text-xs font-bold text-[#26344a] outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 sm:w-[122px]"
+              min={startDate || undefined}
+              onChange={(event) => setEndDate(event.target.value)}
+              type="date"
+              value={endDate}
+            />
+          </label>
+        </div>
+
         <div className="hidden items-center gap-2 font-mono text-[20px] font-semibold tracking-[0.04em] text-[#26344a] sm:flex">
           <Clock3 className="h-[18px] w-[18px] text-[#9aa7b8]" />
           {liveTime}
@@ -65,4 +103,13 @@ export function WorkspaceHeader({
       </div>
     </header>
   );
+}
+
+function getBangkokDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+  }).format(new Date());
 }

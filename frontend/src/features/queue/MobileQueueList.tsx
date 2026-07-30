@@ -1,11 +1,13 @@
 "use client";
 
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { LockKeyhole } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PatientQueueItem } from "@/types/pharmacy";
 import { alertIcon, alertStyles, durationClass, priorityStyles, stageLabel, stageStyles } from "./queue-ui";
+import { VerifyStatusCheckbox } from "./VerifyStatusCheckbox";
 
 function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) {
   if (event.key === "Enter" || event.key === " ") {
@@ -17,11 +19,17 @@ function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) 
 export function MobileQueueList({
   patients,
   selectedId,
+  sentToMatchingPatientIds,
+  verifiedPrescriptionIds,
   onSelect,
+  onSendMatching,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
+  sentToMatchingPatientIds: ReadonlySet<string>;
+  verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
+  onSendMatching: (patientId: string) => void;
 }) {
   const [expandedVn, setExpandedVn] = useState<string | null>(null);
 
@@ -37,6 +45,8 @@ export function MobileQueueList({
         const hasPrescriptions = prescriptions.length > 0;
         const isExpanded = expandedVn === patient.vn;
         const isSelected = selectedId === patient.id;
+        const allPrescriptionsVerified = hasPrescriptions && prescriptions.every((prescription) => verifiedPrescriptionIds.has(prescription.id));
+        const hasSentToMatching = sentToMatchingPatientIds.has(patient.id);
         const activateCard = () => hasPrescriptions ? toggleExpanded(patient.vn) : onSelect(patient.id);
 
         return (
@@ -55,7 +65,10 @@ export function MobileQueueList({
                   <div className="mt-1 text-base font-black text-slate-800">{patient.name}</div>
                   <div className="mt-1 font-mono text-xs font-bold text-slate-400">HN {patient.hn}</div>
                 </div>
-                <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>{patient.priority}</span>
+                <div className="shrink-0 text-right">
+                  <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>{patient.priority}</span>
+                  <div className="mt-1 text-[11px] font-bold text-slate-400">วันที่ {patient.date ?? "—"}</div>
+                </div>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
@@ -75,10 +88,26 @@ export function MobileQueueList({
                     <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
                   )) : <span className="text-sm font-bold text-slate-300">ไม่มีแจ้งเตือน</span>}
                 </div>
-                <span className="flex shrink-0 items-center gap-1 text-sm font-bold text-blue-600">
-                  {hasPrescriptions ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
-                  {hasPrescriptions ? (isExpanded ? "ซ่อน PN" : "ดู PN") : patient.pharmacist ?? "เปิดรายการ"}
-                </span>
+                <div onClick={(event) => event.stopPropagation()}>
+                  {hasPrescriptions ? (
+                    <Button
+                      aria-label={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ยัง Verify VN ไม่ได้ ต้อง Verify PN ทุกใบก่อน"}
+                      className={cn(
+                        "h-9 rounded-xl px-3",
+                        allPrescriptionsVerified
+                          ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-100 disabled:text-blue-700 disabled:opacity-100"
+                          : "border border-slate-300 bg-slate-100 text-slate-400 shadow-none disabled:pointer-events-auto disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100",
+                      )}
+                      disabled={!allPrescriptionsVerified || hasSentToMatching}
+                      onClick={() => onSendMatching(patient.id)}
+                      title={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ต้อง Verify PN ทุกใบก่อน"}
+                      type="button"
+                    >
+                      {!allPrescriptionsVerified ? <LockKeyhole className="h-3.5 w-3.5" /> : null}
+                      {hasSentToMatching ? "Verify แล้ว" : "Verify"}
+                    </Button>
+                  ) : <span className="text-sm font-bold text-slate-400">{patient.pharmacist ?? "ไม่มี PN"}</span>}
+                </div>
               </div>
             </div>
 
@@ -103,7 +132,9 @@ export function MobileQueueList({
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-mono text-sm font-black text-blue-700">PN {prescription.pn}</div>
-                          <div className="mt-1 text-xs font-bold text-slate-400">{prescription.time} · {prescription.drugs.length} รายการ</div>
+                          <div className="mt-1 text-xs font-bold text-slate-400">
+                            วันที่ {prescription.date ?? patient.date ?? "—"} · {prescription.time} · {prescription.drugs.length} รายการ
+                          </div>
                         </div>
                         <Badge className={cn("w-fit shrink-0 whitespace-nowrap", stageStyles[prescription.stage])}>{stageLabel(prescription.stage)}</Badge>
                       </div>
@@ -117,6 +148,13 @@ export function MobileQueueList({
                         <div className="text-right text-xs font-bold text-slate-500">
                           <div>{patient.doctor ?? "รอข้อมูลแพทย์"}</div>
                           <div className={cn("mt-1", durationClass(patient.durationMinutes))}>{patient.durationMinutes}m · {patient.priority}</div>
+                          <span className="mt-2 inline-flex items-center gap-1.5 text-blue-700">
+                            เช็ก
+                            <VerifyStatusCheckbox
+                              checked={verifiedPrescriptionIds.has(prescription.id)}
+                              label={`สถานะ Verify PN ${prescription.pn}`}
+                            />
+                          </span>
                         </div>
                       </div>
                     </div>

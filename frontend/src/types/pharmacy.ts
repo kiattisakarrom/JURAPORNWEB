@@ -24,6 +24,7 @@ export type DrugItem = {
 export type PatientPrescription = {
   id: string;
   pn: string;
+  date?: string;
   stage: "verify";
   time: string;
   alerts: AlertKind[];
@@ -41,6 +42,7 @@ export type PatientQueueItem = {
   hn: string;
   name: string;
   priority: Priority;
+  date?: string;
   stage: Exclude<QueueStage, "all">;
   medicationCount: number;
   time: string;

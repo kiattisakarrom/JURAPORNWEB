@@ -14,9 +14,12 @@ export interface VerifyPrescriptionPagination {
 }
 
 export interface VerifyPrescriptionListItem {
+  CREATEDATETIME: string | null;
   VISITDATETIME: string;
   VISITNUMBER: string;
   PRESCRIPTIONNUMBER: string;
+  CLINIC_CODE: string | null;
+  LOCALWARDNAME: string | null;
   DOCTOR: VerifyDoctor;
   ITEMS: VerifyItem[];
 }
