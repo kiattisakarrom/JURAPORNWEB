@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3, ClipboardCheck, FileWarning, ListChecks, Pill } from "lucide-react";
+import { BarChart3, ClipboardCheck, FileWarning, PackageCheck, Pill, ScanBarcode } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
@@ -23,7 +23,8 @@ import { QueueTable } from "./QueueTable";
 
 const workspaceItems: WorkspaceNavItem[] = [
   { id: "verify", label: "Verify", subtitle: "Verify Workstation", icon: ClipboardCheck },
-  { id: "matching", label: "จัด/ตรวจ", subtitle: "Matching & Checking", icon: ListChecks },
+  { id: "matching", label: "Matching", subtitle: "Matching Workstation", icon: ScanBarcode },
+  { id: "checking", label: "Checking", subtitle: "Checking Workstation", icon: PackageCheck },
   { id: "dispensing", label: "จ่ายยา", subtitle: "Dispensing & Queue", icon: Pill },
   { id: "dashboard", label: "Dashboard", subtitle: "Operations Dashboard", icon: BarChart3 },
   { id: "me", label: "ME Report", subtitle: "Medication Error Report", icon: FileWarning },
@@ -202,7 +203,13 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
           ) : null}
 
-          {activeScreen === "matching" ? <MatchingCheckingScreen search={search} /> : null}
+          {activeScreen === "matching" || activeScreen === "checking" ? (
+            <MatchingCheckingScreen
+              search={search}
+              stage={activeScreen}
+              onOpenChecking={() => selectScreen("checking")}
+            />
+          ) : null}
           {activeScreen === "dispensing" ? <DispensingQueueScreen search={search} /> : null}
           {activeScreen === "dashboard" ? <OperationsDashboard /> : null}
           {activeScreen === "me" ? <MedicationErrorScreen search={search} /> : null}

@@ -18,7 +18,7 @@ export function SidebarNav({
       <div className="mb-[14px] hidden h-[42px] w-[42px] items-center justify-center rounded-xl bg-gradient-to-br from-[#2f6bf3] to-[#1f9be0] text-white shadow-lg shadow-blue-950/30 md:flex">
         <Activity className="h-6 w-6" />
       </div>
-      <nav className="grid flex-1 grid-cols-5 gap-1 md:flex md:w-full md:flex-col md:items-center md:gap-1">
+      <nav className="grid flex-1 grid-cols-6 gap-1 md:flex md:w-full md:flex-col md:items-center md:gap-1">
         {items.map((item) => {
           const Icon = item.icon;
           const active = activeScreen === item.id;

@@ -1,25 +1,25 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, CheckCircle2, ClipboardCheck, PackageCheck, Play, Printer } from "lucide-react";
+import {
+  Barcode,
+  CheckCircle2,
+  ChevronRight,
+  CircleCheck,
+  Clock3,
+  Filter,
+  Info,
+  LockKeyhole,
+  PackageCheck,
+  Printer,
+  RefreshCw,
+  ScanLine,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getWorkflowBaskets, type WorkflowBasketItem, type WorkflowStage } from "@/lib/workstation-api";
 import { cn } from "@/lib/utils";
-
-const machineStyles = {
-  Box: "bg-blue-50 text-blue-700",
-  INJ: "bg-violet-50 text-violet-700",
-  Smart: "bg-cyan-50 text-cyan-700",
-  Cold: "bg-sky-50 text-sky-700",
-};
-
-const statusStyles = {
-  wait: { label: "รอดำเนินการ", className: "bg-amber-50 text-amber-700", dot: "bg-[#e0a008]", progress: "bg-[#e07d12]" },
-  doing: { label: "กำลังดำเนินการ", className: "bg-orange-50 text-orange-700", dot: "bg-[#e07d12]", progress: "bg-[#e07d12]" },
-  done: { label: "เสร็จแล้ว", className: "bg-emerald-50 text-emerald-700", dot: "bg-[#16a34a]", progress: "bg-[#16a34a]" },
-};
 
 function progressOf(basket: WorkflowBasketItem) {
   const done = basket.items.filter((item) => item.status === "done").length;
@@ -32,9 +32,36 @@ function progressOf(basket: WorkflowBasketItem) {
   } as const;
 }
 
-export function MatchingCheckingScreen({ search }: { search: string }) {
-  const [activeStage, setActiveStage] = useState<WorkflowStage>("matching");
+function currentBangkokTime() {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  }).format(new Date());
+}
+
+export function MatchingCheckingScreen({
+  search,
+  stage,
+  onOpenChecking,
+}: {
+  search: string;
+  stage: WorkflowStage;
+  onOpenChecking: () => void;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [guideCode, setGuideCode] = useState("");
+  const [medicineCode, setMedicineCode] = useState("");
+  const [stickerCode, setStickerCode] = useState("");
+  const [checkingDrugCode, setCheckingDrugCode] = useState("");
+  const [guideError, setGuideError] = useState<string | null>(null);
+  const [medicineError, setMedicineError] = useState<string | null>(null);
+  const [checkingError, setCheckingError] = useState<string | null>(null);
+  const [confirmedStickerItemId, setConfirmedStickerItemId] = useState<string | null>(null);
+  const [printedAt, setPrintedAt] = useState<Record<string, string>>({});
+  const [checkedAt, setCheckedAt] = useState<Record<string, string>>({});
   const [itemStatus, setItemStatus] = useState<Record<string, WorkflowBasketItem["items"][number]["status"]>>({});
   const [basketStage, setBasketStage] = useState<Record<string, WorkflowStage>>({});
   const { data = [], isLoading } = useQuery({ queryKey: ["workflow-baskets"], queryFn: getWorkflowBaskets });
@@ -55,21 +82,142 @@ export function MatchingCheckingScreen({ search }: { search: string }) {
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return baskets.filter((basket) => {
-      const matchesStage = basket.stage === activeStage;
+      const matchesStage = basket.stage === stage;
       const matchesSearch = !keyword || [basket.basket, basket.vn, basket.hn, basket.name, basket.guide].some((value) => value.toLowerCase().includes(keyword));
       return matchesStage && matchesSearch;
     });
-  }, [activeStage, baskets, search]);
+  }, [baskets, search, stage]);
 
-  const selected = filtered.find((basket) => basket.id === selectedId) ?? filtered[0];
+  const selected = filtered.find((basket) => basket.id === selectedId);
   const selectedProgress = selected ? progressOf(selected) : undefined;
 
-  function advanceItem(item: WorkflowBasketItem["items"][number]) {
-    if (item.status === "done") return;
-    setItemStatus((current) => ({
-      ...current,
-      [item.id]: item.status === "wait" ? "doing" : "done",
-    }));
+  function selectBasket(basket: WorkflowBasketItem) {
+    setSelectedId(basket.id);
+    setGuideError(null);
+    setMedicineError(null);
+    setCheckingError(null);
+    setGuideCode("");
+    setMedicineCode("");
+    setStickerCode("");
+    setCheckingDrugCode("");
+    setConfirmedStickerItemId(null);
+  }
+
+  function findGuide(codeValue = guideCode) {
+    const code = codeValue.trim().toLowerCase();
+    if (!code) {
+      setGuideError("กรุณากรอกรหัสใบนำทาง");
+      return;
+    }
+
+    const basket = baskets.find((item) =>
+      item.stage === stage
+      && [item.guide, item.basket, item.vn].some((value) => value.toLowerCase() === code),
+    );
+
+    if (!basket) {
+      setGuideError(`ไม่พบใบนำทางที่ระบุในรายการ ${stage === "matching" ? "Matching" : "Checking"}`);
+      return;
+    }
+
+    selectBasket(basket);
+  }
+
+  function updateGuideCode(value: string) {
+    setGuideCode(value);
+    setGuideError(null);
+
+    const code = value.trim().toLowerCase();
+    if (!code) return;
+
+    const basket = baskets.find((item) =>
+      item.stage === stage
+      && [item.guide, item.basket, item.vn].some((candidate) => candidate.toLowerCase() === code),
+    );
+    if (basket) selectBasket(basket);
+  }
+
+  function scanMedicine() {
+    if (!selected || stage !== "matching") return;
+
+    const code = medicineCode.trim().toLowerCase();
+    if (!code) {
+      setMedicineError("กรุณากรอกรหัสยา");
+      return;
+    }
+
+    const item = selected.items.find((drug) => drug.code.toLowerCase() === code);
+    if (!item) {
+      setMedicineError("รหัสยานี้ไม่อยู่ในใบนำทางที่เลือก");
+      return;
+    }
+
+    setItemStatus((current) => ({ ...current, [item.id]: "done" }));
+    setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
+    setMedicineCode("");
+    setMedicineError(null);
+  }
+
+  function reprintItem(item: WorkflowBasketItem["items"][number]) {
+    setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
+  }
+
+  function confirmSticker() {
+    if (!selected || stage !== "checking") return;
+
+    const code = stickerCode.trim().toLowerCase();
+    if (!code) {
+      setCheckingError("กรุณาสแกนรหัสสติกเกอร์");
+      return;
+    }
+
+    const item = selected.items.find((drug) => drug.stickerCode.toLowerCase() === code);
+    if (!item) {
+      setCheckingError("รหัสสติกเกอร์นี้ไม่อยู่ในใบนำทางที่เลือก");
+      setConfirmedStickerItemId(null);
+      return;
+    }
+
+    if (item.status === "done") {
+      setCheckingError("รายการยานี้ตรวจสอบผ่านแล้ว");
+      setConfirmedStickerItemId(null);
+      return;
+    }
+
+    setConfirmedStickerItemId(item.id);
+    setCheckingError(null);
+  }
+
+  function verifyStickerWithDrug() {
+    if (!selected || stage !== "checking") return;
+
+    if (!confirmedStickerItemId) {
+      setCheckingError("กรุณาสแกนรหัสสติกเกอร์ก่อน");
+      return;
+    }
+
+    const code = checkingDrugCode.trim().toLowerCase();
+    if (!code) {
+      setCheckingError("กรุณาสแกนรหัสยาที่กล่อง");
+      return;
+    }
+
+    const stickerItem = selected.items.find((item) => item.id === confirmedStickerItemId);
+    const drugItem = selected.items.find((item) => item.code.toLowerCase() === code);
+    if (!stickerItem || !drugItem || stickerItem.id !== drugItem.id) {
+      setCheckingError("รหัสสติกเกอร์ไม่ตรงกับรหัสยาที่กล่อง กรุณาตรวจสอบอีกครั้ง");
+      setStickerCode("");
+      setCheckingDrugCode("");
+      setConfirmedStickerItemId(null);
+      return;
+    }
+
+    setItemStatus((current) => ({ ...current, [stickerItem.id]: "done" }));
+    setCheckedAt((current) => ({ ...current, [stickerItem.id]: currentBangkokTime() }));
+    setStickerCode("");
+    setCheckingDrugCode("");
+    setConfirmedStickerItemId(null);
+    setCheckingError(null);
   }
 
   function sendSelectedToChecking() {
@@ -86,161 +234,493 @@ export function MatchingCheckingScreen({ search }: { search: string }) {
       });
       return next;
     });
-    setActiveStage("checking");
-    setSelectedId(selected.id);
+    setSelectedId(null);
+    onOpenChecking();
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex shrink-0 items-center gap-5 border-b border-slate-200 bg-white px-4 md:px-6">
-        {(["matching", "checking"] as WorkflowStage[]).map((stage) => {
-          const active = activeStage === stage;
-          const count = baskets.filter((basket) => basket.stage === stage).length;
-          return (
-            <button
-              className={cn("relative flex h-14 items-center gap-2 text-sm font-black text-slate-500 transition hover:text-blue-600", active && "text-blue-700")}
-              key={stage}
-              onClick={() => {
-                setActiveStage(stage);
-                setSelectedId(null);
-              }}
-              type="button"
-            >
-              {stage === "matching" ? "Matching · จับคู่" : "Checking · ตรวจสอบ"}
-              <span className={cn("rounded-lg px-2 py-1 text-xs", active ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500")}>{count}</span>
-              {active ? <span className="absolute bottom-0 left-0 right-0 h-1 rounded-t-full bg-blue-600" /> : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(176px,34dvh)_minmax(0,1fr)] md:grid-cols-[360px_minmax(0,1fr)] md:grid-rows-1 xl:grid-cols-[392px_minmax(0,1fr)]">
-        <aside className="min-h-0 border-b border-slate-200 bg-white p-3 md:border-b-0 md:border-r md:p-4">
-          <div className="flex h-full min-h-0 gap-3 overflow-x-auto md:flex-col md:overflow-y-auto">
-            {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}
-            {filtered.map((basket) => {
-              const progress = progressOf(basket);
-              const active = selected?.id === basket.id;
-              const status = statusStyles[progress.state];
-              return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f9fc]">
+      {stage === "matching" ? (
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
+            <section className="shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+              <label className="block text-lg font-black text-slate-950" htmlFor="matching-guide-code">ค้นหาใบนำทาง</label>
+              <div className="relative mt-3">
+                <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
+                <input
+                  className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  id="matching-guide-code"
+                  onChange={(event) => updateGuideCode(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") findGuide();
+                  }}
+                  placeholder="สแกนหรือกรอกรหัสใบนำทาง"
+                  value={guideCode}
+                />
                 <button
-                  className={cn(
-                    "min-w-[280px] rounded-2xl border bg-white p-4 text-left transition md:min-w-0",
-                    active ? "border-blue-400 bg-blue-50 shadow-sm" : "border-slate-100 hover:border-blue-200 hover:bg-slate-50",
-                  )}
-                  key={basket.id}
-                  onClick={() => setSelectedId(basket.id)}
+                  aria-label="ยืนยันรหัสใบนำทาง"
+                  className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100"
+                  onClick={() => findGuide()}
                   type="button"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="font-mono text-base font-black text-slate-900">{basket.basket}</div>
-                    <Badge className={status.className}>{status.label}</Badge>
-                  </div>
-                  <div className="mt-2 truncate font-black text-slate-800">{basket.name}</div>
-                  <div className="mt-1 text-xs font-bold text-slate-400">VN {basket.vn} · ใบนำทาง {basket.guide}</div>
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full", status.progress)} style={{ width: `${progress.percent}%` }} />
+                  <ScanLine className="h-6 w-6" />
+                </button>
+              </div>
+              <div className="mt-4 flex items-center gap-3 text-slate-500">
+                <Info className="h-5 w-5 shrink-0" />
+                <p className="text-sm font-bold md:text-base">เลือกใบนำทางจากรายการ หรือสแกนรหัสด้านบน</p>
+              </div>
+              {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{guideError}</p> : null}
+            </section>
+
+            {selected ? (
+              <section className="shrink-0 rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm shadow-blue-100 md:p-6" aria-live="polite">
+                <div className="flex items-start justify-between gap-3">
+                  <h2 className="font-mono text-lg font-black text-slate-950">ใบนำทาง {selected.guide}</h2>
+                  <Badge className="shrink-0 bg-amber-50 px-3 py-1.5 text-amber-700">กำลัง Matching</Badge>
+                </div>
+                <div className="mt-4 text-lg font-black text-slate-900">{selected.name}</div>
+                <div className="mt-3 grid grid-cols-2 divide-x divide-slate-200 text-sm font-bold text-slate-600">
+                  <span>VN {selected.vn}</span>
+                  <span className="pl-5">HN {selected.hn}</span>
+                </div>
+              </section>
+            ) : null}
+
+            <section className="flex min-h-[280px] flex-1 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+              <div className="flex items-center gap-3">
+                <h2 className="text-base font-black text-slate-950 md:text-lg">รายการรอ Matching</h2>
+                <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-blue-600 px-2 text-sm font-black text-white">{filtered.length}</span>
+                <div className="flex-1" />
+                <button aria-label="รีเฟรชรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+                  <RefreshCw className="h-5 w-5" />
+                </button>
+                <button aria-label="กรองรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+                  <Filter className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-4 min-h-0 space-y-3 overflow-y-auto pr-1">
+                {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}
+                {!isLoading && filtered.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">ไม่พบรายการรอ Matching</div> : null}
+                {filtered.map((basket, index) => {
+                  const isSelected = basket.id === selected?.id;
+                  return (
+                    <button
+                      aria-pressed={isSelected}
+                      className={cn(
+                        "grid w-full grid-cols-[minmax(0,1fr)_auto_20px] items-center gap-3 rounded-xl border p-4 text-left transition focus-visible:border-blue-500",
+                        isSelected
+                          ? "border-blue-400 bg-blue-100 shadow-sm shadow-blue-100"
+                          : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50",
+                      )}
+                      key={basket.id}
+                      onClick={() => selectBasket(basket)}
+                      type="button"
+                    >
+                      <span className="min-w-0">
+                        <span className="block font-mono text-base font-black text-slate-950">{basket.guide}</span>
+                        <span className="mt-1 block truncate font-black text-slate-800">{basket.name}</span>
+                        <span className="mt-1 block font-mono text-xs font-bold text-slate-400">VN {basket.vn}</span>
+                      </span>
+                      <span className="text-right">
+                        <span className="flex items-center justify-end gap-1 text-xs font-bold text-slate-500">
+                          <Clock3 className="h-4 w-4" />
+                          {isSelected ? "กำลัง Matching" : basket.waitingText ?? (index === 0 ? "รอ 3 นาที" : "เพิ่งส่งมา")}
+                        </span>
+                        <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length} รายการ</span>
+                      </span>
+                      <ChevronRight className={cn("h-5 w-5", isSelected ? "text-blue-700" : "text-slate-600")} />
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          </aside>
+
+          {selected && selectedProgress ? (
+            <section className="flex min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-0">
+              <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                  <div className="flex min-w-[220px] items-center gap-4">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                      <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />
                     </div>
-                    <span className="font-mono text-xs font-black text-slate-500">{progress.done}/{progress.total}</span>
+                    <div className="whitespace-nowrap font-mono text-xl font-black text-slate-900">
+                      {selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">รายการ</span>
+                    </div>
                   </div>
+                </div>
+
+                <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+                  <label className="text-sm font-black text-slate-700" htmlFor="matching-medicine-code">สแกนรหัสยา</label>
+                  <div className="relative mt-2">
+                    <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
+                    <input
+                      className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      id="matching-medicine-code"
+                      onChange={(event) => {
+                        setMedicineCode(event.target.value);
+                        setMedicineError(null);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") scanMedicine();
+                      }}
+                      placeholder="กรอกรหัสยาเพื่อพิมพ์สติกเกอร์อัตโนมัติ"
+                      value={medicineCode}
+                    />
+                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={scanMedicine} type="button">
+                      <ScanLine className="h-6 w-6" />
+                    </button>
+                  </div>
+                  {medicineError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{medicineError}</p> : null}
+                  <p className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm">
+                    <Info className="h-4 w-4 shrink-0" />
+                    เมื่อรหัสถูกต้อง ระบบจะพิมพ์สติกเกอร์ทันที
+                  </p>
+                </section>
+
+                <div className="mt-5 space-y-3">
+                  {selected.items.map((item, index) => {
+                    const isDone = item.status === "done";
+                    return (
+                      <div
+                        className={cn(
+                          "grid gap-3 rounded-2xl border p-4 md:grid-cols-[48px_minmax(220px,1fr)_130px_190px_auto] md:items-center md:px-5",
+                          isDone ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white",
+                        )}
+                        key={item.id}
+                      >
+                        <div className={cn(
+                          "flex h-10 w-10 items-center justify-center rounded-full text-base font-black",
+                          isDone ? "bg-emerald-500 text-white" : "border border-amber-200 bg-amber-50 text-amber-700",
+                        )}>
+                          {isDone ? <CheckCircle2 className="h-6 w-6" /> : index + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                          <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
+                        </div>
+                        <div>
+                          <div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div>
+                          <div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div>
+                        </div>
+                        <div className={cn("text-sm font-black", isDone ? "text-emerald-600" : "text-amber-700")}>
+                          {isDone ? (
+                            <>
+                              <span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />พิมพ์สติกเกอร์แล้ว</span>
+                              <span className="mt-1 block font-mono font-bold text-slate-400">{printedAt[item.id] ?? item.printedAt ?? "พิมพ์แล้ว"}</span>
+                            </>
+                          ) : (
+                            <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอสแกนยา</span>
+                          )}
+                        </div>
+                        {isDone ? (
+                          <Button className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => reprintItem(item)} size="sm" variant="outline">
+                            <Printer className="h-4 w-4" />
+                            พิมพ์ซ้ำ
+                          </Button>
+                        ) : <span />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="m-4 mt-0 flex shrink-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:m-6 md:mt-0 md:flex-row md:items-center md:p-5">
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700">
+                    {selectedProgress.done === selectedProgress.total ? <CircleCheck className="h-5 w-5 text-emerald-600" /> : <LockKeyhole className="h-5 w-5" />}
+                  </div>
+                  <div>
+                    <div className="font-black text-slate-800">ทำรายการยาให้ครบก่อนส่งต่อ</div>
+                    <div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">กรุณาสแกนหรือพิมพ์สติกเกอร์ยาทั้งหมด {selectedProgress.done}/{selectedProgress.total} รายการ เพื่อส่งไปหน้า Checking</div>
+                  </div>
+                </div>
+                <div className="flex-1" />
+                <Button
+                  className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
+                  disabled={selectedProgress.done !== selectedProgress.total}
+                  onClick={sendSelectedToChecking}
+                >
+                  <LockKeyhole className="h-4 w-4" />
+                  ส่งไปหน้า Checking
+                </Button>
+              </div>
+            </section>
+          ) : (
+            <section aria-label="ยังไม่ได้เลือกใบนำทาง" className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
+          )}
+        </div>
+      ) : (
+        <CheckingWorkspace
+          baskets={filtered}
+          checkedAt={checkedAt}
+          checkingDrugCode={checkingDrugCode}
+          checkingError={checkingError}
+          confirmedStickerItemId={confirmedStickerItemId}
+          guideCode={guideCode}
+          guideError={guideError}
+          isLoading={isLoading}
+          onConfirmSticker={confirmSticker}
+          onFindGuide={findGuide}
+          onSelect={selectBasket}
+          onUpdateDrugCode={(value) => {
+            setCheckingDrugCode(value);
+            setCheckingError(null);
+          }}
+          onUpdateGuideCode={updateGuideCode}
+          onUpdateStickerCode={(value) => {
+            setStickerCode(value);
+            setCheckingError(null);
+            setConfirmedStickerItemId(null);
+          }}
+          onVerifyPair={verifyStickerWithDrug}
+          selected={selected}
+          stickerCode={stickerCode}
+        />
+      )}
+    </div>
+  );
+}
+
+function CheckingWorkspace({
+  baskets,
+  selected,
+  isLoading,
+  guideCode,
+  guideError,
+  stickerCode,
+  checkingDrugCode,
+  checkingError,
+  confirmedStickerItemId,
+  checkedAt,
+  onSelect,
+  onFindGuide,
+  onUpdateGuideCode,
+  onUpdateStickerCode,
+  onUpdateDrugCode,
+  onConfirmSticker,
+  onVerifyPair,
+}: {
+  baskets: WorkflowBasketItem[];
+  selected?: WorkflowBasketItem;
+  isLoading: boolean;
+  guideCode: string;
+  guideError: string | null;
+  stickerCode: string;
+  checkingDrugCode: string;
+  checkingError: string | null;
+  confirmedStickerItemId: string | null;
+  checkedAt: Record<string, string>;
+  onSelect: (basket: WorkflowBasketItem) => void;
+  onFindGuide: () => void;
+  onUpdateGuideCode: (value: string) => void;
+  onUpdateStickerCode: (value: string) => void;
+  onUpdateDrugCode: (value: string) => void;
+  onConfirmSticker: () => void;
+  onVerifyPair: () => void;
+}) {
+  const selectedProgress = selected ? progressOf(selected) : undefined;
+  const confirmedStickerItem = selected?.items.find((item) => item.id === confirmedStickerItemId);
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
+      <aside className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
+        <section className="shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <label className="block text-lg font-black text-slate-950" htmlFor="checking-guide-code">ค้นหาใบนำทาง</label>
+          <div className="relative mt-3">
+            <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
+            <input
+              className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              id="checking-guide-code"
+              onChange={(event) => onUpdateGuideCode(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onFindGuide();
+              }}
+              placeholder="สแกนหรือกรอกรหัสใบนำทาง"
+              value={guideCode}
+            />
+            <button aria-label="ยืนยันรหัสใบนำทาง" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onFindGuide} type="button">
+              <ScanLine className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="mt-4 flex items-center gap-3 text-slate-500">
+            <Info className="h-5 w-5 shrink-0" />
+            <p className="text-sm font-bold md:text-base">เลือกใบนำทางจากรายการ หรือสแกนรหัสด้านบน</p>
+          </div>
+          {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{guideError}</p> : null}
+        </section>
+
+        {selected ? (
+          <section className="shrink-0 rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm shadow-blue-100 md:p-6" aria-live="polite">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-mono text-lg font-black text-slate-950">ใบนำทาง {selected.guide}</h2>
+              <Badge className="shrink-0 bg-blue-100 px-3 py-1.5 text-blue-700">กำลัง Checking</Badge>
+            </div>
+            <div className="mt-4 text-lg font-black text-slate-900">{selected.name}</div>
+            <div className="mt-3 grid grid-cols-2 divide-x divide-blue-200 text-sm font-bold text-slate-600">
+              <span>VN {selected.vn}</span>
+              <span className="pl-5">HN {selected.hn}</span>
+            </div>
+          </section>
+        ) : null}
+
+        <section className="flex min-h-[280px] flex-1 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+          <div className="flex items-center gap-3">
+            <h2 className="text-base font-black text-slate-950 md:text-lg">รายการรอ Checking</h2>
+            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-blue-600 px-2 text-sm font-black text-white">{baskets.length}</span>
+            <div className="flex-1" />
+            <button aria-label="รีเฟรชรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+              <RefreshCw className="h-5 w-5" />
+            </button>
+            <button aria-label="กรองรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+              <Filter className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="mt-4 min-h-0 space-y-3 overflow-y-auto pr-1">
+            {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}
+            {!isLoading && baskets.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">ไม่พบรายการรอ Checking</div> : null}
+            {baskets.map((basket, index) => {
+              const isSelected = basket.id === selected?.id;
+              return (
+                <button
+                  aria-pressed={isSelected}
+                  className={cn(
+                    "grid w-full grid-cols-[minmax(0,1fr)_auto_20px] items-center gap-3 rounded-xl border p-4 text-left transition focus-visible:border-blue-500",
+                    isSelected
+                      ? "border-blue-400 bg-blue-100 shadow-sm shadow-blue-100"
+                      : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50",
+                  )}
+                  key={basket.id}
+                  onClick={() => onSelect(basket)}
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-mono text-base font-black text-slate-950">{basket.guide}</span>
+                    <span className="mt-1 block truncate font-black text-slate-800">{basket.name}</span>
+                    <span className="mt-1 block font-mono text-xs font-bold text-slate-400">VN {basket.vn}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="flex items-center justify-end gap-1 text-xs font-bold text-slate-500"><Clock3 className="h-4 w-4" />{isSelected ? "กำลัง Checking" : basket.waitingText ?? (index === 0 ? "รอ 2 นาที" : "เพิ่งส่งมา")}</span>
+                    <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length} รายการ</span>
+                  </span>
+                  <ChevronRight className={cn("h-5 w-5", isSelected ? "text-blue-700" : "text-slate-600")} />
                 </button>
               );
             })}
           </div>
-        </aside>
-
-        <section className="min-h-0 overflow-y-auto p-4 md:p-6">
-          {selected && selectedProgress ? (
-            <div className="w-full">
-              <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="font-mono text-2xl font-black text-slate-950">{selected.basket}</h2>
-                    <Badge className={statusStyles[selectedProgress.state].className}>{statusStyles[selectedProgress.state].label}</Badge>
-                  </div>
-                  <div className="mt-2 text-sm font-semibold text-slate-500">{selected.name} · VN {selected.vn} · HN {selected.hn}</div>
-                </div>
-                <div className="text-left md:text-right">
-                  <div className="text-xs font-black uppercase tracking-[0.12em] text-slate-400">ใบนำทาง</div>
-                  <div className="font-mono text-xl font-black text-slate-700">{selected.guide}</div>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center">
-                  <div className="flex-1">
-                    <div className="mb-2 text-sm font-bold text-slate-500">ความคืบหน้าการรวบรวมยา</div>
-                    <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                      <div className={cn("h-full rounded-full transition-all", statusStyles[selectedProgress.state].progress)} style={{ width: `${selectedProgress.percent}%` }} />
-                    </div>
-                  </div>
-                  <div className="font-mono text-2xl font-black text-slate-900">{selectedProgress.done}/{selectedProgress.total}</div>
-                </div>
-              </div>
-
-              <div className="mt-5 text-xs font-black uppercase tracking-[0.12em] text-slate-400">รายการยาในตะกร้า</div>
-              <div className="mt-3 space-y-3">
-                {selected.items.map((item) => {
-                  const status = statusStyles[item.status];
-                  return (
-                    <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center" key={item.id}>
-                      <span className={cn("h-3 w-3 rounded-full", status.dot)} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-black text-slate-900">{item.name}</div>
-                        <div className="text-sm font-bold text-slate-400">{status.label}</div>
-                      </div>
-                      <Badge className={machineStyles[item.machine]}>{item.machine}</Badge>
-                      <div className="font-mono font-black text-slate-600 md:w-24 md:text-right">{item.quantity}</div>
-                      <Button
-                        className={cn(
-                          item.status === "wait" && "bg-[#e0a008] hover:bg-[#bd8208]",
-                          item.status === "doing" && "bg-[#e07d12] hover:bg-[#c76a0d]",
-                          item.status === "done" && "cursor-default bg-[#e7f6ec] text-[#16a34a] hover:bg-[#e7f6ec]",
-                        )}
-                        onClick={() => advanceItem(item)}
-                        size="sm"
-                        variant={item.status === "done" ? "secondary" : "default"}
-                      >
-                        {item.status === "done" ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4" />
-                            {item.status === "doing" ? "เสร็จ" : "เริ่ม"}
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="sticky bottom-0 mt-5 flex flex-col gap-3 bg-transparent pb-2 pt-3 md:flex-row md:items-center">
-                <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
-                  {activeStage === "matching" ? <Boxes className="h-4 w-4" /> : <ClipboardCheck className="h-4 w-4" />}
-                  {activeStage === "matching" ? "สแกนใบนำทางเพื่อจับคู่ยา เมื่อครบให้พิมพ์ฉลาก" : "สแกนยืนยันความถูกต้อง เมื่อครบส่งต่อ AGV"}
-                </div>
-                <div className="flex-1" />
-                <Button variant="outline"><Printer className="h-4 w-4" />พิมพ์เอกสาร</Button>
-                <Button
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  disabled={selectedProgress.done !== selectedProgress.total}
-                  onClick={activeStage === "matching" ? sendSelectedToChecking : undefined}
-                >
-                  <PackageCheck className="h-4 w-4" />
-                  {activeStage === "matching" ? "ส่ง Checking" : "ส่ง AGV"}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-slate-400">
-              <Boxes className="h-12 w-12" />
-              <div className="font-bold">ไม่พบตะกร้าในเงื่อนไขนี้</div>
-            </div>
-          )}
         </section>
-      </div>
+      </aside>
+
+      {selected && selectedProgress ? (
+        <section className="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-0">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+              <div className="flex min-w-[220px] items-center gap-4">
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />
+                </div>
+                <div className="whitespace-nowrap font-mono text-xl font-black text-slate-900">{selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">รายการ</span></div>
+              </div>
+            </div>
+
+            <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+              <h3 className="text-base font-black text-slate-900">ตรวจสอบสติกเกอร์กับตัวยา</h3>
+              <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                <div>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-sticker-code">1. สแกนรหัสสติกเกอร์</label>
+                  <div className="relative mt-2">
+                    <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
+                    <input
+                      className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      id="checking-sticker-code"
+                      onChange={(event) => onUpdateStickerCode(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") onConfirmSticker();
+                      }}
+                      placeholder="สแกนรหัสบนสติกเกอร์ยา"
+                      value={stickerCode}
+                    />
+                    <button aria-label="ยืนยันรหัสสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onConfirmSticker} type="button">
+                      <ScanLine className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-drug-code">2. สแกนรหัสยาที่กล่อง</label>
+                  <div className="relative mt-2">
+                    <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
+                    <input
+                      className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                      disabled={!confirmedStickerItemId}
+                      id="checking-drug-code"
+                      onChange={(event) => onUpdateDrugCode(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") onVerifyPair();
+                      }}
+                      placeholder={confirmedStickerItemId ? "สแกนรหัสยาบนกล่องเพื่อตรวจสอบ" : "สแกนสติกเกอร์ก่อน"}
+                      value={checkingDrugCode}
+                    />
+                    <button aria-label="ตรวจสอบรหัสยากับสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition enabled:hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" disabled={!confirmedStickerItemId} onClick={onVerifyPair} type="button">
+                      <ScanLine className="h-6 w-6" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {confirmedStickerItem ? (
+                <p className="mt-4 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
+                  <Info className="h-4 w-4 shrink-0" />
+                  สแกนสติกเกอร์ของ {confirmedStickerItem.name} แล้ว กรุณาสแกนรหัสยาที่กล่องเพื่อตรวจสอบ
+                </p>
+              ) : (
+                <p className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm"><Info className="h-4 w-4 shrink-0" />ระบบจะผ่านรายการเมื่อรหัสสติกเกอร์และรหัสยาที่กล่องตรงกันเท่านั้น</p>
+              )}
+              {checkingError ? <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600" role="alert">{checkingError}</p> : null}
+            </section>
+
+            <div className="mt-5 space-y-3">
+              {selected.items.map((item, index) => {
+                const isDone = item.status === "done";
+                const isPending = item.id === confirmedStickerItemId;
+                return (
+                  <div className={cn("grid gap-3 rounded-2xl border p-4 md:grid-cols-[48px_minmax(220px,1fr)_120px_170px_210px] md:items-center md:px-5", isDone ? "border-emerald-200 bg-emerald-50/50" : isPending ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white")} key={item.id}>
+                    <div className={cn("flex h-10 w-10 items-center justify-center rounded-full text-base font-black", isDone ? "bg-emerald-500 text-white" : isPending ? "bg-blue-600 text-white" : "border border-amber-200 bg-amber-50 text-amber-700")}>{isDone ? <CheckCircle2 className="h-6 w-6" /> : index + 1}</div>
+                    <div className="min-w-0">
+                      <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                      <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
+                    </div>
+                    <div><div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div><div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div></div>
+                    <div><div className="font-mono text-sm font-black text-slate-700">{item.stickerCode}</div><div className="mt-1 text-xs font-bold text-slate-400">รหัสสติกเกอร์</div></div>
+                    <div className={cn("text-sm font-black", isDone ? "text-emerald-600" : isPending ? "text-blue-700" : "text-amber-700")}>
+                      {isDone ? <><span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />ตรวจสอบตรงกันแล้ว</span><span className="mt-1 block font-mono font-bold text-slate-400">{checkedAt[item.id] ?? "ตรวจสอบแล้ว"}</span></> : isPending ? <span className="flex items-center gap-2"><ScanLine className="h-4 w-4" />รอสแกนรหัสยาที่กล่อง</span> : <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอตรวจสอบ</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="m-4 mt-0 flex shrink-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:m-6 md:mt-0 md:flex-row md:items-center md:p-5">
+            <div className="flex min-w-0 items-center gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700">{selectedProgress.done === selectedProgress.total ? <CircleCheck className="h-5 w-5 text-emerald-600" /> : <LockKeyhole className="h-5 w-5" />}</div>
+              <div><div className="font-black text-slate-800">ตรวจสอบยาให้ครบก่อนส่งต่อ</div><div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">สติกเกอร์และรหัสยาต้องตรงกันครบ {selectedProgress.done}/{selectedProgress.total} รายการ</div></div>
+            </div>
+            <div className="flex-1" />
+            <Button className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100" disabled={selectedProgress.done !== selectedProgress.total}>
+              <PackageCheck className="h-4 w-4" />
+              ส่ง AGV
+            </Button>
+          </div>
+        </section>
+      ) : (
+        <section aria-label="ยังไม่ได้เลือกใบนำทาง" className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
+      )}
     </div>
   );
 }

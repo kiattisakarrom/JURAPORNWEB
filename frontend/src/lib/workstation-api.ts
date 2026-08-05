@@ -7,13 +7,17 @@ export type WorkflowBasketItem = {
   hn: string;
   name: string;
   guide: string;
+  waitingText?: string;
   stage: WorkflowStage;
   items: Array<{
     id: string;
+    code: string;
+    stickerCode: string;
     name: string;
     quantity: string;
     machine: "Box" | "INJ" | "Smart" | "Cold";
     status: "wait" | "doing" | "done";
+    printedAt?: string;
   }>;
 };
 
@@ -67,10 +71,12 @@ export async function getWorkflowBaskets(): Promise<WorkflowBasketItem[]> {
       hn: "123456",
       name: "Patient A",
       guide: "NG-0091",
+      waitingText: "กำลัง Matching",
       stage: "matching",
       items: [
-        { id: "basket-2401-1", name: "Warfarin 3 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
-        { id: "basket-2401-2", name: "Aspirin 81 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2401-1", code: "1000001", stickerCode: "ST-1000001", name: "Warfarin 3 mg", quantity: "30 เม็ด", machine: "Box", status: "done", printedAt: "04:48:21" },
+        { id: "basket-2401-2", code: "2000002", stickerCode: "ST-2000002", name: "Aspirin 81 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2401-3", code: "3000003", stickerCode: "ST-3000003", name: "Calcium Carbonate 600 mg", quantity: "60 เม็ด", machine: "Box", status: "wait" },
       ],
     },
     {
@@ -80,11 +86,27 @@ export async function getWorkflowBaskets(): Promise<WorkflowBasketItem[]> {
       hn: "345678",
       name: "Patient B",
       guide: "NG-0092",
+      waitingText: "รอ 3 นาที",
       stage: "matching",
       items: [
-        { id: "basket-2402-1", name: "Enalapril 5 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
-        { id: "basket-2402-2", name: "Simvastatin 20 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
-        { id: "basket-2402-3", name: "Insulin glargine", quantity: "1 ปากกา", machine: "Cold", status: "wait" },
+        { id: "basket-2402-1", code: "4000004", stickerCode: "ST-4000004", name: "Enalapril 5 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2402-2", code: "5000005", stickerCode: "ST-5000005", name: "Simvastatin 20 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+      ],
+    },
+    {
+      id: "basket-2403",
+      basket: "B-2403",
+      vn: "240021",
+      hn: "678901",
+      name: "Patient C",
+      guide: "NG-0093",
+      waitingText: "เพิ่งส่งมา",
+      stage: "matching",
+      items: [
+        { id: "basket-2403-1", code: "6000006", stickerCode: "ST-6000006", name: "Metformin 500 mg", quantity: "60 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2403-2", code: "7000007", stickerCode: "ST-7000007", name: "Amlodipine 5 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2403-3", code: "8000008", stickerCode: "ST-8000008", name: "Losartan 50 mg", quantity: "30 เม็ด", machine: "Smart", status: "wait" },
+        { id: "basket-2403-4", code: "9000009", stickerCode: "ST-9000009", name: "Insulin glargine", quantity: "1 ปากกา", machine: "Cold", status: "wait" },
       ],
     },
     {
@@ -96,8 +118,8 @@ export async function getWorkflowBaskets(): Promise<WorkflowBasketItem[]> {
       guide: "NG-0088",
       stage: "checking",
       items: [
-        { id: "basket-2398-1", name: "Amoxicillin syrup 250/5", quantity: "1 ขวด", machine: "Smart", status: "wait" },
-        { id: "basket-2398-2", name: "Paracetamol syrup", quantity: "1 ขวด", machine: "Smart", status: "wait" },
+        { id: "basket-2398-1", code: "9100001", stickerCode: "ST-9100001", name: "Amoxicillin syrup 250/5", quantity: "1 ขวด", machine: "Smart", status: "wait" },
+        { id: "basket-2398-2", code: "9100002", stickerCode: "ST-9100002", name: "Paracetamol syrup", quantity: "1 ขวด", machine: "Smart", status: "wait" },
       ],
     },
     {
@@ -109,8 +131,8 @@ export async function getWorkflowBaskets(): Promise<WorkflowBasketItem[]> {
       guide: "NG-0089",
       stage: "checking",
       items: [
-        { id: "basket-2399-1", name: "Amlodipine 5 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
-        { id: "basket-2399-2", name: "Losartan 50 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2399-1", code: "9200001", stickerCode: "ST-9200001", name: "Amlodipine 5 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
+        { id: "basket-2399-2", code: "9200002", stickerCode: "ST-9200002", name: "Losartan 50 mg", quantity: "30 เม็ด", machine: "Box", status: "wait" },
       ],
     },
   ];
