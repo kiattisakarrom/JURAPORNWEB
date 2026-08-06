@@ -18,6 +18,7 @@ import {
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MedicationErrorReportModal } from "@/features/medication-error/MedicationErrorReportModal";
 import { getWorkflowBaskets, type WorkflowBasketItem, type WorkflowStage } from "@/lib/workstation-api";
 import { cn } from "@/lib/utils";
 
@@ -60,6 +61,8 @@ export function MatchingCheckingScreen({
   const [medicineError, setMedicineError] = useState<string | null>(null);
   const [checkingError, setCheckingError] = useState<string | null>(null);
   const [confirmedStickerItemId, setConfirmedStickerItemId] = useState<string | null>(null);
+  const [selectedMedicationErrorItemId, setSelectedMedicationErrorItemId] = useState<string | null>(null);
+  const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
   const [printedAt, setPrintedAt] = useState<Record<string, string>>({});
   const [checkedAt, setCheckedAt] = useState<Record<string, string>>({});
   const [itemStatus, setItemStatus] = useState<Record<string, WorkflowBasketItem["items"][number]["status"]>>({});
@@ -90,6 +93,7 @@ export function MatchingCheckingScreen({
 
   const selected = filtered.find((basket) => basket.id === selectedId);
   const selectedProgress = selected ? progressOf(selected) : undefined;
+  const selectedMedicationErrorItem = selected?.items.find((item) => item.id === selectedMedicationErrorItemId);
 
   function selectBasket(basket: WorkflowBasketItem) {
     setSelectedId(basket.id);
@@ -101,6 +105,8 @@ export function MatchingCheckingScreen({
     setStickerCode("");
     setCheckingDrugCode("");
     setConfirmedStickerItemId(null);
+    setSelectedMedicationErrorItemId(null);
+    setIsMedicationErrorOpen(false);
   }
 
   function findGuide(codeValue = guideCode) {
@@ -235,6 +241,8 @@ export function MatchingCheckingScreen({
       return next;
     });
     setSelectedId(null);
+    setSelectedMedicationErrorItemId(null);
+    setIsMedicationErrorOpen(false);
     onOpenChecking();
   }
 
@@ -384,13 +392,28 @@ export function MatchingCheckingScreen({
                 <div className="mt-5 space-y-3">
                   {selected.items.map((item, index) => {
                     const isDone = item.status === "done";
+                    const isSelectedForMedicationError = selectedMedicationErrorItemId === item.id;
                     return (
                       <div
+                        aria-label={`เลือก ${item.name} เพื่อรายงาน ME`}
+                        aria-pressed={isSelectedForMedicationError}
                         className={cn(
-                          "grid gap-3 rounded-2xl border p-4 md:grid-cols-[48px_minmax(220px,1fr)_130px_190px_auto] md:items-center md:px-5",
-                          isDone ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white",
+                          "grid cursor-pointer gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:grid-cols-[48px_minmax(220px,1fr)_130px_190px_minmax(126px,auto)] md:items-center md:px-5",
+                          isSelectedForMedicationError
+                            ? "border-blue-400 bg-blue-50 shadow-sm shadow-blue-100 ring-1 ring-blue-200"
+                            : isDone ? "border-emerald-200 bg-emerald-50/50 hover:border-blue-300" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40",
                         )}
                         key={item.id}
+                        onClick={() => setSelectedMedicationErrorItemId(item.id)}
+                        onKeyDown={(event) => {
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedMedicationErrorItemId(item.id);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
                       >
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-full text-base font-black",
@@ -399,14 +422,23 @@ export function MatchingCheckingScreen({
                           {isDone ? <CheckCircle2 className="h-6 w-6" /> : index + 1}
                         </div>
                         <div className="min-w-0">
-                          <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                            {isSelectedForMedicationError ? (
+                              <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                            ) : null}
+                          </div>
                           <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
                         </div>
                         <div>
                           <div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div>
                           <div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div>
                         </div>
-                        <div className={cn("text-sm font-black", isDone ? "text-emerald-600" : "text-amber-700")}>
+                        <div className={cn(
+                          "text-sm font-black md:mr-6 md:justify-self-end md:text-right",
+                          !isDone && "md:col-span-2",
+                          isDone ? "text-emerald-600" : "text-amber-700",
+                        )}>
                           {isDone ? (
                             <>
                               <span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />พิมพ์สติกเกอร์แล้ว</span>
@@ -417,11 +449,21 @@ export function MatchingCheckingScreen({
                           )}
                         </div>
                         {isDone ? (
-                          <Button className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => reprintItem(item)} size="sm" variant="outline">
-                            <Printer className="h-4 w-4" />
-                            พิมพ์ซ้ำ
-                          </Button>
-                        ) : <span />}
+                          <div>
+                            <Button
+                              className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                reprintItem(item);
+                              }}
+                              size="sm"
+                              variant="outline"
+                            >
+                              <Printer className="h-4 w-4" />
+                              พิมพ์ซ้ำ
+                            </Button>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -439,6 +481,16 @@ export function MatchingCheckingScreen({
                   </div>
                 </div>
                 <div className="flex-1" />
+                <Button
+                  className="h-12 shrink-0 rounded-xl border-orange-200 px-5 text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
+                  disabled={!selectedMedicationErrorItem}
+                  onClick={() => setIsMedicationErrorOpen(true)}
+                  title={selectedMedicationErrorItem ? `รายงาน ME สำหรับ ${selectedMedicationErrorItem.name}` : "กรุณาเลือกรายการยาที่พบปัญหาก่อน"}
+                  variant="outline"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  รายงาน ME
+                </Button>
                 <Button
                   className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
                   disabled={selectedProgress.done !== selectedProgress.total}
@@ -465,7 +517,9 @@ export function MatchingCheckingScreen({
           isLoading={isLoading}
           onConfirmSticker={confirmSticker}
           onFindGuide={findGuide}
+          onOpenMedicationError={() => setIsMedicationErrorOpen(true)}
           onSelect={selectBasket}
+          onSelectMedicationErrorItem={setSelectedMedicationErrorItemId}
           onUpdateDrugCode={(value) => {
             setCheckingDrugCode(value);
             setCheckingError(null);
@@ -478,9 +532,24 @@ export function MatchingCheckingScreen({
           }}
           onVerifyPair={verifyStickerWithDrug}
           selected={selected}
+          selectedMedicationErrorItemId={selectedMedicationErrorItemId}
           stickerCode={stickerCode}
         />
       )}
+
+      {isMedicationErrorOpen && selectedMedicationErrorItem ? (
+        <MedicationErrorReportModal
+          drug={{
+            code: selectedMedicationErrorItem.code,
+            id: selectedMedicationErrorItem.id,
+            name: selectedMedicationErrorItem.name,
+            quantity: selectedMedicationErrorItem.quantity,
+            source: selectedMedicationErrorItem.machine,
+            stickerCode: selectedMedicationErrorItem.stickerCode,
+          }}
+          onClose={() => setIsMedicationErrorOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -503,6 +572,9 @@ function CheckingWorkspace({
   onUpdateDrugCode,
   onConfirmSticker,
   onVerifyPair,
+  selectedMedicationErrorItemId,
+  onSelectMedicationErrorItem,
+  onOpenMedicationError,
 }: {
   baskets: WorkflowBasketItem[];
   selected?: WorkflowBasketItem;
@@ -521,6 +593,9 @@ function CheckingWorkspace({
   onUpdateDrugCode: (value: string) => void;
   onConfirmSticker: () => void;
   onVerifyPair: () => void;
+  selectedMedicationErrorItemId: string | null;
+  onSelectMedicationErrorItem: (id: string) => void;
+  onOpenMedicationError: () => void;
 }) {
   const selectedProgress = selected ? progressOf(selected) : undefined;
   const confirmedStickerItem = selected?.items.find((item) => item.id === confirmedStickerItemId);
@@ -688,16 +763,44 @@ function CheckingWorkspace({
               {selected.items.map((item, index) => {
                 const isDone = item.status === "done";
                 const isPending = item.id === confirmedStickerItemId;
+                const isSelectedForMedicationError = item.id === selectedMedicationErrorItemId;
                 return (
-                  <div className={cn("grid gap-3 rounded-2xl border p-4 md:grid-cols-[48px_minmax(220px,1fr)_120px_170px_210px] md:items-center md:px-5", isDone ? "border-emerald-200 bg-emerald-50/50" : isPending ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white")} key={item.id}>
+                  <div
+                    aria-label={`เลือก ${item.name} เพื่อรายงาน ME`}
+                    aria-pressed={isSelectedForMedicationError}
+                    className={cn(
+                      "grid cursor-pointer gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:grid-cols-[48px_minmax(220px,1fr)_120px_170px_210px] md:items-center md:px-5",
+                      isSelectedForMedicationError
+                        ? "border-blue-400 bg-blue-50 shadow-sm shadow-blue-100 ring-1 ring-blue-200"
+                        : isDone ? "border-emerald-200 bg-emerald-50/50 hover:border-blue-300" : isPending ? "border-blue-300 bg-blue-50 hover:border-blue-400" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40",
+                    )}
+                    key={item.id}
+                    onClick={() => onSelectMedicationErrorItem(item.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelectMedicationErrorItem(item.id);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
                     <div className={cn("flex h-10 w-10 items-center justify-center rounded-full text-base font-black", isDone ? "bg-emerald-500 text-white" : isPending ? "bg-blue-600 text-white" : "border border-amber-200 bg-amber-50 text-amber-700")}>{isDone ? <CheckCircle2 className="h-6 w-6" /> : index + 1}</div>
                     <div className="min-w-0">
-                      <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
+                        {isSelectedForMedicationError ? (
+                          <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                        ) : null}
+                      </div>
                       <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
                     </div>
                     <div><div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div><div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div></div>
                     <div><div className="font-mono text-sm font-black text-slate-700">{item.stickerCode}</div><div className="mt-1 text-xs font-bold text-slate-400">รหัสสติกเกอร์</div></div>
-                    <div className={cn("text-sm font-black", isDone ? "text-emerald-600" : isPending ? "text-blue-700" : "text-amber-700")}>
+                    <div className={cn(
+                      "text-sm font-black md:mr-6 md:justify-self-end md:text-right",
+                      isDone ? "text-emerald-600" : isPending ? "text-blue-700" : "text-amber-700",
+                    )}>
                       {isDone ? <><span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />ตรวจสอบตรงกันแล้ว</span><span className="mt-1 block font-mono font-bold text-slate-400">{checkedAt[item.id] ?? "ตรวจสอบแล้ว"}</span></> : isPending ? <span className="flex items-center gap-2"><ScanLine className="h-4 w-4" />รอสแกนรหัสยาที่กล่อง</span> : <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอตรวจสอบ</span>}
                     </div>
                   </div>
@@ -712,6 +815,16 @@ function CheckingWorkspace({
               <div><div className="font-black text-slate-800">ตรวจสอบยาให้ครบก่อนส่งต่อ</div><div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">สติกเกอร์และรหัสยาต้องตรงกันครบ {selectedProgress.done}/{selectedProgress.total} รายการ</div></div>
             </div>
             <div className="flex-1" />
+            <Button
+              className="h-12 shrink-0 rounded-xl border-orange-200 px-5 text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
+              disabled={!selectedMedicationErrorItemId}
+              onClick={onOpenMedicationError}
+              title={selectedMedicationErrorItemId ? "รายงาน ME สำหรับยาที่เลือก" : "กรุณาเลือกรายการยาที่พบปัญหาก่อน"}
+              variant="outline"
+            >
+              <RefreshCw className="h-4 w-4" />
+              รายงาน ME
+            </Button>
             <Button className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100" disabled={selectedProgress.done !== selectedProgress.total}>
               <PackageCheck className="h-4 w-4" />
               ส่ง AGV

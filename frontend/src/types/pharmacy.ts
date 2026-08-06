@@ -17,6 +17,8 @@ export type DrugItem = {
   id: string;
   name: string;
   sig: string;
+  MEDICINECODE?: string;
+  DOSEMEMO_TH?: string;
   source: string;
   machineCode: string;
 };

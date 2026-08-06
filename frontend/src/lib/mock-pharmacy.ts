@@ -1,5 +1,81 @@
 import type { PatientQueueItem, PharmacyQueueResponse, QueueStage } from "@/types/pharmacy";
 
+const mockMedicationDetails: Record<string, { MEDICINECODE: string; DOSEMEMO_TH: string }> = {
+  "Atorvastatin 40mg": {
+    MEDICINECODE: "1000000001",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง ก่อนนอน",
+  },
+  "Amlodipine 5mg": {
+    MEDICINECODE: "1000000002",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง หลังอาหารเช้า",
+  },
+  "Aspirin 81mg": {
+    MEDICINECODE: "1000000003",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง หลังอาหารเช้า\r\n/*...กลืนยาทั้งเม็ด ห้ามบดหรือเคี้ยวยา",
+  },
+  "Losartan 50mg": {
+    MEDICINECODE: "1000000004",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง หลังอาหารเช้า",
+  },
+  "Folic Acid 5mg": {
+    MEDICINECODE: "1000000005",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง หลังอาหารเช้า",
+  },
+  "Clopidogrel 75mg": {
+    MEDICINECODE: "1000000006",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง หลังอาหารเช้า\r\n/*...ห้ามหยุดยาเองโดยไม่ปรึกษาแพทย์",
+  },
+  "Omeprazole 20mg": {
+    MEDICINECODE: "1000000007",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 แคปซูล\r\nวันละ 1 ครั้ง ก่อนอาหารเช้า 30 นาที",
+  },
+  "Rosuvastatin 10mg": {
+    MEDICINECODE: "1000000008",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง ก่อนนอน",
+  },
+  "Warfarin 3mg": {
+    MEDICINECODE: "1000000009",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง ก่อนนอน\r\n/*...รับประทานตามวันที่แพทย์กำหนดและมาตรวจ INR ตามนัด",
+  },
+  "Cetirizine 10mg": {
+    MEDICINECODE: "1000000010",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง ก่อนนอน\r\n/*...ยานี้อาจทำให้ง่วงนอน",
+  },
+  "Paracetamol 500mg": {
+    MEDICINECODE: "1000000011",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nทุก 6 ชั่วโมง เมื่อมีอาการปวดหรือมีไข้",
+  },
+  "Ibuprofen 400mg": {
+    MEDICINECODE: "1000000012",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 2 ครั้ง หลังอาหารเช้าและเย็น",
+  },
+  "Calcium Carbonate 1000mg": {
+    MEDICINECODE: "1000000013",
+    DOSEMEMO_TH: "รับประทานครั้งละ 1 เม็ด\r\nวันละ 1 ครั้ง พร้อมอาหารเช้า",
+  },
+};
+
+function addMockMedicationDetails(patient: PatientQueueItem): PatientQueueItem {
+  const addDetails = (drug: PatientQueueItem["drugs"][number]) => {
+    const details = mockMedicationDetails[drug.name];
+
+    return {
+      ...drug,
+      MEDICINECODE: drug.MEDICINECODE ?? details?.MEDICINECODE ?? "1099999999",
+      DOSEMEMO_TH: drug.DOSEMEMO_TH ?? details?.DOSEMEMO_TH ?? drug.sig.split("·")[0].trim(),
+    };
+  };
+
+  return {
+    ...patient,
+    drugs: patient.drugs.map(addDetails),
+    prescriptions: patient.prescriptions?.map((prescription) => ({
+      ...prescription,
+      drugs: prescription.drugs.map(addDetails),
+    })),
+  };
+}
+
 export const mockPatients: PatientQueueItem[] = [
   {
     id: "pt-a",
@@ -243,14 +319,15 @@ export const mockPatients: PatientQueueItem[] = [
 const stages: QueueStage[] = ["all", "verify", "picking", "matching", "checking", "dispensing", "pending", "complete", "missed-call"];
 
 export function buildQueueResponse(): PharmacyQueueResponse {
+  const patients = mockPatients.map(addMockMedicationDetails);
   const summary = stages.reduce(
     (acc, stage) => {
       acc[stage] =
         stage === "all"
-          ? mockPatients.length
+          ? patients.length
           : stage === "verify"
-            ? mockPatients.reduce((total, patient) => total + (patient.stage === "verify" ? patient.prescriptions?.length ?? 1 : 0), 0)
-            : mockPatients.filter((patient) => patient.stage === stage).length;
+            ? patients.reduce((total, patient) => total + (patient.stage === "verify" ? patient.prescriptions?.length ?? 1 : 0), 0)
+            : patients.filter((patient) => patient.stage === stage).length;
       return acc;
     },
     {} as PharmacyQueueResponse["summary"],
@@ -259,6 +336,6 @@ export function buildQueueResponse(): PharmacyQueueResponse {
   return {
     generatedAt: new Date().toISOString(),
     summary,
-    patients: mockPatients,
+    patients,
   };
 }
