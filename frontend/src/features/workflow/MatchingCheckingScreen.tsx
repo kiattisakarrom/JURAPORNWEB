@@ -477,7 +477,7 @@ export function MatchingCheckingScreen({
                   </div>
                   <div>
                     <div className="font-black text-slate-800">ทำรายการยาให้ครบก่อนส่งต่อ</div>
-                    <div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">กรุณาสแกนหรือพิมพ์สติกเกอร์ยาทั้งหมด {selectedProgress.done}/{selectedProgress.total} รายการ เพื่อส่งไปหน้า Checking</div>
+                    <div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">กรุณาสแกนโคดยาทั้งหมด {selectedProgress.done}/{selectedProgress.total} รายการ </div>
                   </div>
                 </div>
                 <div className="flex-1" />
