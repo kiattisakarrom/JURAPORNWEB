@@ -9,7 +9,7 @@ API ชุดแรกเป็นแบบอ่านข้อมูลอย�
 ดึงข้อมูล Verify โดยจัดกลุ่ม `PATIENT → PRESCRIPTIONS → ITEMS` การแบ่งหน้าจะนับตามจำนวนผู้ป่วย เพื่อให้ผู้ป่วยที่อยู่ในหน้าปัจจุบันได้รับใบสั่งยาและรายการยาครบใน Response เดียว
 
 ```http
-GET /verify/prescriptions?patientId={PATIENTID}&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&page=1&limit=20
+GET /verify/prescriptions?patientId={PATIENTID}&visitNumber={VISITNUMBER}&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&page=1&limit=20
 ```
 
 Query parameters:
@@ -17,12 +17,13 @@ Query parameters:
 | Field | Required | Description |
 |---|---:|---|
 | `patientId` | Conditional | กรองด้วย `TBLORX.PATIENTID` ความยาวไม่เกิน 15 ตัวอักษร |
+| `visitNumber` | Conditional | กรองแบบตรงกันทั้งหมดด้วย `TBLORX.VISITNUMBER` ความยาวไม่เกิน 10 ตัวอักษร |
 | `fromDate` | Conditional | วันเริ่มต้นของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `toDate` |
 | `toDate` | Conditional | วันสิ้นสุดของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `fromDate` |
 | `page` | No | หน้าของรายชื่อผู้ป่วย ค่าเริ่มต้น 1 |
 | `limit` | No | จำนวนผู้ป่วยต่อหน้า 1–100 ค่าเริ่มต้น 20 |
 
-ต้องส่ง `patientId` หรือช่วงวันที่อย่างน้อยหนึ่งรูปแบบ หากส่งทั้งสองแบบ ระบบจะใช้เงื่อนไขร่วมกัน
+ต้องส่ง `patientId`, `visitNumber` หรือช่วงวันที่อย่างน้อยหนึ่งรูปแบบ หากส่งหลายตัวกรอง ระบบจะใช้เงื่อนไขร่วมกันแบบ `AND`
 
 Response `200 OK`:
 
@@ -30,6 +31,7 @@ Response `200 OK`:
 {
   "FILTER": {
     "PATIENTID": "{PATIENTID}",
+    "VISITNUMBER": "{VISITNUMBER}",
     "FROMDATE": "2026-07-01",
     "TODATE": "2026-07-14"
   },
@@ -79,11 +81,17 @@ Examples:
 # ใบสั่งยาทั้งหมดของผู้ป่วยที่เลือก
 GET /verify/prescriptions?patientId={PATIENTID}
 
+# กรองด้วย VISITNUMBER
+GET /verify/prescriptions?visitNumber={VISITNUMBER}
+
 # ผู้ป่วยทั้งหมดในช่วงวันที่
 GET /verify/prescriptions?fromDate=2026-07-01&toDate=2026-07-14&page=1&limit=20
 
 # ผู้ป่วยที่เลือกภายในช่วงวันที่
 GET /verify/prescriptions?patientId={PATIENTID}&fromDate=2026-07-01&toDate=2026-07-14
+
+# ใช้ VISITNUMBER ร่วมกับผู้ป่วยและช่วงวันที่
+GET /verify/prescriptions?patientId={PATIENTID}&visitNumber={VISITNUMBER}&fromDate=2026-07-01&toDate=2026-07-14
 ```
 
 ## Verify prescription

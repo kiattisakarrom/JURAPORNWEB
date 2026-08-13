@@ -9,7 +9,7 @@ export type QueueStage =
   | "complete"
   | "missed-call";
 
-export type Priority = "Stat" | "Re-work" | "New";
+export type Priority = "Stat" | "Re-work" | "New" | "Unspecified";
 
 export type AlertKind = "duplicate" | "interaction" | "machine" | "stock" | "paper" | "note";
 
@@ -21,6 +21,10 @@ export type DrugItem = {
   DOSEMEMO_TH?: string;
   source: string;
   machineCode: string;
+  itemSequence?: number;
+  createdAt?: string | null;
+  orderQuantity?: number | null;
+  orderUnitCode?: string | null;
 };
 
 export type PatientPrescription = {
@@ -31,6 +35,11 @@ export type PatientPrescription = {
   time: string;
   alerts: AlertKind[];
   drugs: DrugItem[];
+  createdAt?: string | null;
+  clinicCode?: string | null;
+  wardName?: string | null;
+  doctorCode?: string | null;
+  doctor?: string | null;
   issue?: {
     kind: AlertKind;
     title: string;
@@ -48,11 +57,16 @@ export type PatientQueueItem = {
   stage: Exclude<QueueStage, "all">;
   medicationCount: number;
   time: string;
-  durationMinutes: number;
+  durationMinutes?: number;
   alerts: AlertKind[];
   drugs: DrugItem[];
   prescriptions?: PatientPrescription[];
   doctor?: string;
+  doctorCode?: string | null;
+  clinicCode?: string | null;
+  wardName?: string | null;
+  prescriptionCreatedAt?: string | null;
+  dataSource?: "verify-prescriptions-api" | "mock";
   pharmacist?: string;
   issue?: {
     kind: AlertKind;

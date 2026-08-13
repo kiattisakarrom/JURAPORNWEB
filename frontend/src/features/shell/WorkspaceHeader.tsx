@@ -1,35 +1,41 @@
 "use client";
 
 import { Activity, CalendarDays, Clock3, LogOut, Search } from "lucide-react";
-import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { QueueSummary } from "@/types/pharmacy";
 import type { WorkspaceNavItem } from "./shell-types";
 
+export type WorkspaceDateRange = {
+  fromDate: string;
+  toDate: string;
+};
+
 export function WorkspaceHeader({
   activeItem,
   liveTime,
   search,
   summary,
+  dateRange,
   onLogout,
+  onDateRangeChange,
   onSearch,
 }: {
   activeItem: WorkspaceNavItem;
   liveTime: string;
   search: string;
   summary?: QueueSummary;
+  dateRange: WorkspaceDateRange;
   onLogout: () => void;
+  onDateRangeChange: (dateRange: WorkspaceDateRange) => void;
   onSearch: (value: string) => void;
 }) {
-  const today = getBangkokDate();
-  const [startDate, setStartDate] = useState(today);
-  const [endDate, setEndDate] = useState(today);
-
   function updateStartDate(value: string) {
-    setStartDate(value);
-    if (endDate && value > endDate) setEndDate(value);
+    onDateRangeChange({
+      fromDate: value,
+      toDate: dateRange.toDate && value > dateRange.toDate ? value : dateRange.toDate,
+    });
   }
 
   return (
@@ -67,10 +73,10 @@ export function WorkspaceHeader({
             <span className="sr-only">วันที่เริ่มต้น</span>
             <input
               className="h-8 w-full min-w-0 rounded-lg border-0 bg-transparent px-1 font-mono text-xs font-bold text-[#26344a] outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 sm:w-[122px]"
-              max={endDate || undefined}
+              max={dateRange.toDate || undefined}
               onChange={(event) => updateStartDate(event.target.value)}
               type="date"
-              value={startDate}
+              value={dateRange.fromDate}
             />
           </label>
           <span className="shrink-0 text-xs font-black text-[#9aa7b8]">–</span>
@@ -78,10 +84,10 @@ export function WorkspaceHeader({
             <span className="sr-only">วันที่สิ้นสุด</span>
             <input
               className="h-8 w-full min-w-0 rounded-lg border-0 bg-transparent px-1 font-mono text-xs font-bold text-[#26344a] outline-none focus:bg-white focus:ring-2 focus:ring-blue-200 sm:w-[122px]"
-              min={startDate || undefined}
-              onChange={(event) => setEndDate(event.target.value)}
+              min={dateRange.fromDate || undefined}
+              onChange={(event) => onDateRangeChange({ ...dateRange, toDate: event.target.value })}
               type="date"
-              value={endDate}
+              value={dateRange.toDate}
             />
           </label>
         </div>
@@ -103,13 +109,4 @@ export function WorkspaceHeader({
       </div>
     </header>
   );
-}
-
-function getBangkokDate() {
-  return new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    month: "2-digit",
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-  }).format(new Date());
 }

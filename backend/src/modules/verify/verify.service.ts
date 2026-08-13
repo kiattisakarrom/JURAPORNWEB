@@ -219,6 +219,7 @@ export class VerifyService {
     return {
       FILTER: {
         PATIENTID: query.patientId ?? null,
+        VISITNUMBER: query.visitNumber ?? null,
         FROMDATE: query.fromDate ?? null,
         TODATE: query.toDate ?? null,
       },
@@ -237,9 +238,9 @@ export class VerifyService {
     const hasFromDate = query.fromDate !== undefined;
     const hasToDate = query.toDate !== undefined;
 
-    if (!query.patientId && !hasFromDate && !hasToDate) {
+    if (!query.patientId && !query.visitNumber && !hasFromDate && !hasToDate) {
       throw new BadRequestException(
-        'Provide patientId or both fromDate and toDate',
+        'Provide patientId, visitNumber, or both fromDate and toDate',
       );
     }
 
@@ -263,6 +264,10 @@ export class VerifyService {
       conditions.push('o.PATIENTID = @patientId');
     }
 
+    if (query.visitNumber) {
+      conditions.push('o.VISITNUMBER = @visitNumber');
+    }
+
     if (query.fromDate && query.toDate) {
       conditions.push('o.CREATEDATETIME >= @fromDate');
       conditions.push(
@@ -279,6 +284,10 @@ export class VerifyService {
   ): void {
     if (query.patientId) {
       request.input('patientId', sql.VarChar(15), query.patientId);
+    }
+
+    if (query.visitNumber) {
+      request.input('visitNumber', sql.VarChar(10), query.visitNumber);
     }
 
     if (query.fromDate && query.toDate) {

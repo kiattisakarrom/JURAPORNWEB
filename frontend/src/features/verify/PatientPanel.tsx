@@ -1,7 +1,8 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FileText, Pill, Printer, RefreshCw, Search, ShieldAlert, Stethoscope, UserRound, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,36 @@ export function PatientPanel({
   const completedHadCount = hadChecklistItems.filter((item) => hadChecklist[item.id]).length;
   const selectedMedicationErrorDrug = patient.drugs.find((drug) => drug.id === selectedMedicationErrorDrugId);
 
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previousHtmlOverflow = html.style.overflow;
+    const previousBodyOverflow = body.style.overflow;
+    const scrollContainers = Array.from(document.querySelectorAll<HTMLElement>("[data-verify-scroll-container]"));
+    const scrollSnapshots = scrollContainers.map((element) => ({
+      element,
+      overflow: element.style.overflow,
+      scrollLeft: element.scrollLeft,
+      scrollTop: element.scrollTop,
+    }));
+
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    scrollSnapshots.forEach(({ element }) => {
+      element.style.overflow = "hidden";
+    });
+
+    return () => {
+      html.style.overflow = previousHtmlOverflow;
+      body.style.overflow = previousBodyOverflow;
+      scrollSnapshots.forEach(({ element, overflow, scrollLeft, scrollTop }) => {
+        element.style.overflow = overflow;
+        element.scrollLeft = scrollLeft;
+        element.scrollTop = scrollTop;
+      });
+    };
+  }, []);
+
   function requestStockCheck() {
     setHasRequestedStockCheck(true);
   }
@@ -84,8 +115,8 @@ export function PatientPanel({
     setHadChecklist((current) => ({ ...current, [id]: !current[id] }));
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex h-dvh justify-end bg-[#0f1f3d]/35">
+  return createPortal(
+    <div aria-modal="true" className="fixed inset-0 z-50 flex h-dvh overflow-hidden overscroll-none justify-end bg-[#0f1f3d]/35" role="dialog">
       <button aria-label="ปิดแผงข้อมูลผู้ป่วย" className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
       <div className="flex h-full w-full justify-end gap-3 p-0 lg:w-auto lg:p-3">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
@@ -103,7 +134,7 @@ export function PatientPanel({
                     <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[patient.stage])} />
                     {stageLabel(patient.stage)}
                   </Badge>
-                  <Badge className={priorityClassName(patient.priority)}>{patient.priority}</Badge>
+                  <Badge className={priorityClassName(patient.priority)}>{patient.priority === "Unspecified" ? "ไม่ระบุ Priority" : patient.priority}</Badge>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
                   <span>VN {displayProfile.vn}</span>
@@ -140,7 +171,7 @@ export function PatientPanel({
             </div>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
             <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900 shadow-sm">
               <div className="flex gap-3">
                 <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
@@ -330,21 +361,22 @@ export function PatientPanel({
           }}
         />
       ) : null}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 function buildInlineProfile(patient: PatientQueueItem, profile?: PatientProfile) {
   return {
-    hn: profile?.hn ?? patient.hn,
-    vn: profile?.vn ?? patient.vn,
-    fullName: profile?.fullName ?? patient.name,
+    hn: patient.hn || profile?.hn || "ไม่ระบุ",
+    vn: patient.vn || profile?.vn || "ไม่ระบุ",
+    fullName: patient.name || profile?.fullName || "ไม่ระบุชื่อผู้ป่วย",
     age: profile?.age ?? "ไม่ระบุอายุ",
     sex: profile?.sex ?? "ไม่ระบุเพศ",
     weight: profile?.weight ?? "ไม่ระบุ",
     height: profile?.height ?? "ไม่ระบุ",
-    ward: profile?.ward ?? "OPD",
-    doctor: profile?.doctor ?? patient.pharmacist ?? "รอข้อมูลแพทย์",
+    ward: patient.wardName ?? profile?.ward ?? "OPD",
+    doctor: patient.doctor ?? profile?.doctor ?? patient.pharmacist ?? "รอข้อมูลแพทย์",
     diagnosis: profile?.diagnosis ?? "รอข้อมูลวินิจฉัย",
     allergy: profile?.keyHistory.allergy ?? patient.issue?.detail ?? "ไม่มีประวัติแพ้ยา",
     renal: profile?.keyHistory.renal ?? "รอข้อมูล",
@@ -441,6 +473,7 @@ function splitDrugSig(sig: string) {
 function priorityClassName(priority: PatientQueueItem["priority"]) {
   if (priority === "Stat") return "bg-rose-100 text-rose-700";
   if (priority === "Re-work") return "bg-orange-100 text-orange-700";
+  if (priority === "Unspecified") return "bg-slate-100 text-slate-500";
   return "bg-slate-100 text-slate-500";
 }
 

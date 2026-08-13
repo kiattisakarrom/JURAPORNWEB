@@ -2,6 +2,7 @@ import { VerifyDoctor, VerifyItem } from './verify-response.interface';
 
 export interface VerifyPrescriptionListFilter {
   PATIENTID: string | null;
+  VISITNUMBER: string | null;
   FROMDATE: string | null;
   TODATE: string | null;
 }

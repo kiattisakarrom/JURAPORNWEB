@@ -20,6 +20,12 @@ export class GetVerifyPrescriptionsQueryDto {
 
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(10)
+  visitNumber?: string;
+
+  @IsOptional()
+  @IsString()
   @IsDateString({ strict: true }, { message: 'fromDate must be a valid date' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'fromDate must use YYYY-MM-DD format',

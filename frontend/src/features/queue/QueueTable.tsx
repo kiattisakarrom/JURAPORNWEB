@@ -44,7 +44,7 @@ function PrescriptionRow({
     >
       <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>
         <span className="mr-2 inline-block h-2 w-2 rounded-full bg-current" />
-        {patient.priority}
+        {priorityLabel(patient.priority)}
       </span>
       <span className="font-mono text-xs font-bold text-slate-400">{prescription.date ?? patient.date ?? "—"}</span>
       <span className="font-mono text-sm font-black text-blue-700">{prescription.pn}</span>
@@ -59,8 +59,8 @@ function PrescriptionRow({
       </span>
       <span className="font-mono text-xs font-bold text-slate-400">{prescription.time}</span>
       <span className="text-sm font-bold text-slate-600">{prescription.drugs.length} รายการ</span>
-      <span className={cn("font-mono text-sm font-bold", durationClass(patient.durationMinutes))}>{patient.durationMinutes}m</span>
-      <span className="truncate text-sm font-bold text-slate-600">{patient.doctor ?? "รอข้อมูลแพทย์"}</span>
+      <span className={cn("font-mono text-sm font-bold", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)}</span>
+      <span className="truncate text-sm font-bold text-slate-600">{prescription.doctor ?? patient.doctor ?? "รอข้อมูลแพทย์"}</span>
       <VerifyStatusCheckbox checked={isVerified} label={`สถานะ Verify PN ${prescription.pn}`} />
     </div>
   );
@@ -90,7 +90,7 @@ export function QueueTable({
   }
 
   return (
-    <div className="stable-scrollbar hidden h-full min-h-0 overflow-auto md:block">
+    <div className="stable-scrollbar hidden h-full min-h-0 overflow-auto md:block" data-verify-scroll-container>
       <table className="w-full min-w-[1360px] table-fixed border-collapse text-left">
         <colgroup>
           <col className="w-[126px]" />
@@ -139,7 +139,7 @@ export function QueueTable({
                 >
                   <td className={cn("h-[66px] px-4 text-sm font-black", priorityStyles[patient.priority])}>
                     <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-current" />
-                    {patient.priority}
+                    {priorityLabel(patient.priority)}
                   </td>
                   <td className="px-4 font-mono text-xs font-bold text-slate-400">{patient.date ?? "—"}</td>
                   <td className="px-4 font-mono text-[15px] font-black text-[#2f6bf3]">{patient.vn}</td>
@@ -211,4 +211,12 @@ export function QueueTable({
       </table>
     </div>
   );
+}
+
+function priorityLabel(priority: PatientQueueItem["priority"]) {
+  return priority === "Unspecified" ? "—" : priority;
+}
+
+function formatDuration(minutes?: number) {
+  return minutes === undefined ? "—" : `${minutes}m`;
 }

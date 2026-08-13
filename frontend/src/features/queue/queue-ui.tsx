@@ -14,6 +14,7 @@ export const priorityStyles: Record<Priority, string> = {
   Stat: "text-[#e0392a]",
   "Re-work": "text-[#e07d12]",
   New: "text-[#9aa7b8]",
+  Unspecified: "text-[#9aa7b8]",
 };
 
 export const stageStyles: Record<PatientQueueItem["stage"], string> = {
@@ -43,7 +44,8 @@ export function stageLabel(stage: PatientQueueItem["stage"]) {
   return stage.charAt(0).toUpperCase() + stage.slice(1);
 }
 
-export function durationClass(minutes: number) {
+export function durationClass(minutes?: number) {
+  if (minutes === undefined) return "text-[#9aa7b8]";
   if (minutes <= 20) return "text-[#15924a]";
   if (minutes <= 30) return "text-[#bd8208]";
   return "text-[#d83a3a]";

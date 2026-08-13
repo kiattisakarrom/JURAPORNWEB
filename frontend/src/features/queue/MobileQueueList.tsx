@@ -38,7 +38,7 @@ export function MobileQueueList({
   }
 
   return (
-    <div className="h-full space-y-3 overflow-y-auto p-4 md:hidden">
+    <div className="h-full space-y-3 overflow-y-auto p-4 md:hidden" data-verify-scroll-container>
       {patients.length === 0 ? <div className="py-8 text-center text-sm font-bold text-slate-400">ไม่พบข้อมูลผู้ป่วย</div> : null}
       {patients.map((patient) => {
         const prescriptions = patient.prescriptions ?? [];
@@ -66,7 +66,7 @@ export function MobileQueueList({
                   <div className="mt-1 font-mono text-xs font-bold text-slate-400">HN {patient.hn}</div>
                 </div>
                 <div className="shrink-0 text-right">
-                  <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>{patient.priority}</span>
+                  <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>{priorityLabel(patient.priority)}</span>
                   <div className="mt-1 text-[11px] font-bold text-slate-400">วันที่ {patient.date ?? "—"}</div>
                 </div>
               </div>
@@ -146,8 +146,8 @@ export function MobileQueueList({
                           )) : <span className="text-xs font-bold text-slate-300">ไม่มีแจ้งเตือน</span>}
                         </div>
                         <div className="text-right text-xs font-bold text-slate-500">
-                          <div>{patient.doctor ?? "รอข้อมูลแพทย์"}</div>
-                          <div className={cn("mt-1", durationClass(patient.durationMinutes))}>{patient.durationMinutes}m · {patient.priority}</div>
+                          <div>{prescription.doctor ?? patient.doctor ?? "รอข้อมูลแพทย์"}</div>
+                          <div className={cn("mt-1", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)} · {priorityLabel(patient.priority)}</div>
                           <span className="mt-2 inline-flex items-center gap-1.5 text-blue-700">
                             เช็ก
                             <VerifyStatusCheckbox
@@ -167,4 +167,12 @@ export function MobileQueueList({
       })}
     </div>
   );
+}
+
+function priorityLabel(priority: PatientQueueItem["priority"]) {
+  return priority === "Unspecified" ? "—" : priority;
+}
+
+function formatDuration(minutes?: number) {
+  return minutes === undefined ? "—" : `${minutes}m`;
 }

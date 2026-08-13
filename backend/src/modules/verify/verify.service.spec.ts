@@ -166,6 +166,7 @@ describe('VerifyService', () => {
 
     const result = await service.findPrescriptions({
       patientId: 'HN0001',
+      visitNumber: 'VN0001',
       fromDate: '2026-07-01',
       toDate: '2026-07-14',
       page: 1,
@@ -194,13 +195,56 @@ describe('VerifyService', () => {
       expect.anything(),
       'HN0001',
     );
+    expect(countRequest.input).toHaveBeenCalledWith(
+      'visitNumber',
+      expect.anything(),
+      'VN0001',
+    );
     const countSql = countRequest.query.mock.calls[0][0] as string;
     const dataSql = dataRequest.query.mock.calls[0][0] as string;
     expect(countSql).toContain('o.CREATEDATETIME >= @fromDate');
+    expect(countSql).toContain('o.VISITNUMBER = @visitNumber');
     expect(countSql).toContain(
       'o.CREATEDATETIME < DATEADD(DAY, 1, @toDate)',
     );
     expect(dataSql).not.toContain('o.VISITDATETIME >= @fromDate');
+  });
+
+  it('allows visitNumber as the only list filter', async () => {
+    const countRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{ TOTAL_PATIENTS: 0 }],
+      }),
+    };
+    const dataRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({ recordset: [] }),
+    };
+    const databaseService = {
+      createRequest: jest
+        .fn()
+        .mockReturnValueOnce(countRequest)
+        .mockReturnValueOnce(dataRequest),
+    } as unknown as DatabaseService;
+    const service = new VerifyService(databaseService);
+
+    const result = await service.findPrescriptions({
+      visitNumber: 'VN0001',
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.FILTER.VISITNUMBER).toBe('VN0001');
+    expect(result.PATIENTS).toEqual([]);
+    expect(countRequest.input).toHaveBeenCalledWith(
+      'visitNumber',
+      expect.anything(),
+      'VN0001',
+    );
+    expect(countRequest.query.mock.calls[0][0]).toContain(
+      'o.VISITNUMBER = @visitNumber',
+    );
   });
 
   it('requires a patient or a complete valid date range', async () => {
