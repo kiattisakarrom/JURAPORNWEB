@@ -25,6 +25,11 @@ export type DrugItem = {
   createdAt?: string | null;
   orderQuantity?: number | null;
   orderUnitCode?: string | null;
+  workflowStatus?: string;
+  packageId?: string;
+  packagePriority?: "NORMAL" | "URGENT";
+  isPackageLocked?: boolean;
+  dispensingPickupStatus?: string | null;
 };
 
 export type PatientPrescription = {
@@ -45,6 +50,7 @@ export type PatientPrescription = {
     title: string;
     detail: string;
   };
+  verifyStatus?: "WAITING" | "VERIFIED_WAITING" | "PARTIAL" | "PACKAGED" | "SOURCE_CHANGED";
 };
 
 export type PatientQueueItem = {
@@ -66,7 +72,20 @@ export type PatientQueueItem = {
   clinicCode?: string | null;
   wardName?: string | null;
   prescriptionCreatedAt?: string | null;
-  dataSource?: "verify-prescriptions-api" | "mock";
+  dataSource?: "verify-prescriptions-api" | "package-api" | "mock";
+  workflowId?: string;
+  workflowCaseStatus?: string;
+  workflowAllowedActions?: string[];
+  activePackageId?: string | null;
+  packageId?: string;
+  packagePriority?: "NORMAL" | "URGENT";
+  verifyLock?: {
+    sessionId: string | null;
+    ownerName: string | null;
+    workstationCode: string | null;
+    expiresAt: string | null;
+    isLocked: boolean;
+  };
   pharmacist?: string;
   issue?: {
     kind: AlertKind;

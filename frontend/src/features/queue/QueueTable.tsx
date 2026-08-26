@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { LockKeyhole } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -70,18 +70,18 @@ export function QueueTable({
   patients,
   selectedId,
   isLoading,
-  sentToMatchingPatientIds,
   verifiedPrescriptionIds,
   onSelect,
-  onSendMatching,
+  onPendingAction,
+  onPrimaryAction,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
   isLoading: boolean;
-  sentToMatchingPatientIds: ReadonlySet<string>;
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
-  onSendMatching: (patientId: string) => void;
+  onPendingAction: (patient: PatientQueueItem) => void;
+  onPrimaryAction: (patient: PatientQueueItem) => void;
 }) {
   const [expandedVn, setExpandedVn] = useState<string | null>(null);
 
@@ -91,9 +91,10 @@ export function QueueTable({
 
   return (
     <div className="stable-scrollbar hidden h-full min-h-0 overflow-auto md:block" data-verify-scroll-container>
-      <table className="w-full min-w-[1360px] table-fixed border-collapse text-left">
+      <table className="w-full min-w-[1590px] table-fixed border-collapse text-left">
         <colgroup>
           <col className="w-[126px]" />
+          <col className="w-[110px]" />
           <col className="w-[120px]" />
           <col className="w-[132px]" />
           <col className="w-[132px]" />
@@ -101,27 +102,28 @@ export function QueueTable({
           <col className="w-[116px]" />
           <col className="w-[168px]" />
           <col className="w-[170px]" />
+          <col className="w-[150px]" />
           <col className="w-[170px]" />
         </colgroup>
         <thead className="sticky top-0 z-20 border-b border-[#e6eaf0] bg-white text-[11px] font-bold uppercase tracking-[0.07em] text-[#9aa7b8] shadow-[0_1px_0_#e6eaf0]">
           <tr>
-            {["Priority", "วันที่", "VN", "HN", "ชื่อ-นามสกุล", "จำนวน PN", "จำนวนรายการยา", "แจ้งเตือน", "เช็คลิส verify"].map((label) => (
+            {["Priority", "ลำดับคิว", "วันที่", "VN", "HN", "ชื่อ-นามสกุล", "จำนวน PN", "จำนวนรายการยา", "แจ้งเตือน", "เช็คลิส verify", "Pending"].map((label) => (
               <th className="h-[42px] px-4" key={label}>{label}</th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {isLoading ? (
-            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={9}>กำลังโหลดข้อมูล...</td></tr>
+            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={11}>กำลังโหลดข้อมูล...</td></tr>
           ) : patients.length === 0 ? (
-            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={9}>ไม่พบข้อมูลผู้ป่วย</td></tr>
+            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={11}>ไม่พบข้อมูลผู้ป่วย</td></tr>
           ) : patients.map((patient) => {
             const prescriptions = patient.prescriptions ?? [];
             const hasPrescriptions = prescriptions.length > 0;
             const isExpanded = expandedVn === patient.vn;
             const isSelected = selectedId === patient.id;
-            const allPrescriptionsVerified = hasPrescriptions && prescriptions.every((prescription) => verifiedPrescriptionIds.has(prescription.id));
-            const hasSentToMatching = sentToMatchingPatientIds.has(patient.id);
+            const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
+            const hasPrimaryAction = patient.stage === "verify" || patient.stage === "picking";
             const activateRow = () => hasPrescriptions ? toggleExpanded(patient.vn) : onSelect(patient.id);
 
             return (
@@ -141,6 +143,7 @@ export function QueueTable({
                     <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-current" />
                     {priorityLabel(patient.priority)}
                   </td>
+                  <td aria-label="ยังไม่มีข้อมูลลำดับคิว" className="px-4" />
                   <td className="px-4 font-mono text-xs font-bold text-slate-400">{patient.date ?? "—"}</td>
                   <td className="px-4 font-mono text-[15px] font-black text-[#2f6bf3]">{patient.vn}</td>
                   <td className="px-4 font-mono text-[14px] font-bold text-slate-500">{patient.hn}</td>
@@ -155,30 +158,45 @@ export function QueueTable({
                     </div>
                   </td>
                   <td className="px-4" onClick={(event) => event.stopPropagation()}>
-                    {hasPrescriptions ? (
+                    {hasPrimaryAction ? (
                       <Button
-                        aria-label={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ยัง Verify VN ไม่ได้ ต้อง Verify PN ทุกใบก่อน"}
+                        aria-label={patient.stage === "picking" ? "ส่งไป Matching" : "เปิดรายการยาเพื่อ Verify"}
                         className={cn(
                           "h-9 rounded-xl px-3",
-                          allPrescriptionsVerified
-                            ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-100 disabled:text-blue-700 disabled:opacity-100"
-                            : "border border-slate-300 bg-slate-100 text-slate-400 shadow-none disabled:pointer-events-auto disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100",
+                          "bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100",
                         )}
-                        disabled={!allPrescriptionsVerified || hasSentToMatching}
-                        onClick={() => onSendMatching(patient.id)}
-                        title={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ต้อง Verify PN ทุกใบก่อน"}
+                        disabled={patient.stage === "verify" ? !hasPrescriptions : !canSendToMatching}
+                        onClick={() => onPrimaryAction(patient)}
+                        title={patient.stage === "picking" ? "ข้ามการรอ Location สำหรับ MVP และส่งไป Matching" : "เปิด PN ที่ยังต้องตรวจ"}
                         type="button"
                       >
-                        {!allPrescriptionsVerified ? <LockKeyhole className="h-3.5 w-3.5" /> : null}
-                        {hasSentToMatching ? "Verify แล้ว" : "Verify"}
+                        {patient.stage === "picking" ? "ส่ง Matching" : "เปิดตรวจยา"}
                       </Button>
-                    ) : <span className="text-sm font-bold text-slate-400">{patient.pharmacist ?? "ไม่มี PN"}</span>}
+                    ) : <span className="text-sm font-bold text-slate-400">{stageLabel(patient.stage)}</span>}
+                  </td>
+                  <td className="px-4" onClick={(event) => event.stopPropagation()}>
+                    {patient.stage === "verify" || patient.stage === "pending" ? (
+                      <Button
+                        className={cn(
+                          "h-9 rounded-xl px-3",
+                          patient.stage === "pending"
+                            ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                            : "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
+                        )}
+                        onClick={() => onPendingAction(patient)}
+                        type="button"
+                        variant="outline"
+                      >
+                        <ArrowLeftRight className="h-3.5 w-3.5" />
+                        {patient.stage === "pending" ? "กลับ Verify" : "ส่ง Pending"}
+                      </Button>
+                    ) : <span className="text-sm font-bold text-slate-300">—</span>}
                   </td>
                 </tr>
 
                 {hasPrescriptions && isExpanded ? (
                   <tr>
-                    <td className="bg-[#f6f9ff] px-4 py-4" colSpan={9}>
+                    <td className="bg-[#f6f9ff] px-4 py-4" colSpan={11}>
                       <div className="overflow-x-auto rounded-2xl border border-blue-100 bg-white shadow-sm">
                         <div className="min-w-[1300px]">
                           <div className="border-b border-blue-100 bg-blue-50/70 px-4 py-3">

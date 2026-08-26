@@ -198,6 +198,102 @@ Database relationship:
 TBLPATIENT.PATIENTID = VitalSign.PATIENTID
 ```
 
+## Package workflow
+
+API กลุ่มนี้จัดการสถานะตั้งแต่ Verify ถึง Dispensing โดยไม่แก้ข้อมูลใน
+`TBLORX`, `TBLORXITEMS` หรือ `TBLORXITEMS_HISTORY`
+
+### Queue และ Package
+
+```http
+GET /package-workflows?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&limit=200
+GET /package-workflows/{workflowId}
+GET /packages?pageNow=MATCHING&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&limit=200
+GET /packages/{packageId}
+```
+
+ตัวกรองที่รองรับ: `patientId`, `visitNumber`, `fromDate`, `toDate`, `limit` โดย
+`pageNow` รองรับ `PICKING`, `MATCHING`, `CHECKING`, `AWAITING_DISPENSING`,
+`DISPENSING`, `COMPLETE`
+
+### Verify lease
+
+```http
+POST /package-workflows/verify-lock
+
+{
+  "visitDate": "2026-08-21",
+  "visitNumber": "240001",
+  "sessionId": "browser-session-id",
+  "ownerName": "Pharmacist",
+  "workstationCode": "VERIFY-WEB"
+}
+```
+
+```http
+POST /package-workflows/{workflowId}/verify-lock/heartbeat
+DELETE /package-workflows/{workflowId}/verify-lock
+
+{
+  "lockToken": "UUID จาก verify-lock",
+  "sessionId": "browser-session-id"
+}
+```
+
+Lease มีอายุ 5 นาที และ client ควร heartbeat ทุก 30 วินาที
+
+### Verify PN ปกติ/ด่วน
+
+```http
+POST /package-workflows/{workflowId}/verify
+
+{
+  "lockToken": "UUID",
+  "sessionId": "browser-session-id",
+  "prescriptionNumber": "01",
+  "mode": "URGENT",
+  "packagePriority": "URGENT",
+  "selectedItems": [
+    { "medicineCode": "1200000096", "itemSeq": 1 }
+  ],
+  "note": "ยาด่วน",
+  "actorName": "Pharmacist",
+  "idempotencyKey": "UUID ต่อการกดหนึ่งครั้ง"
+}
+```
+
+`mode=NORMAL` ไม่ต้องส่ง `selectedItems`; Backend จะรอให้ทุก PN ใน VN ผ่าน
+Verify แล้วสร้างแพ็กเกจรวมอัตโนมัติ ส่วน `mode=URGENT` ต้องส่งอย่างน้อยหนึ่งรายการ
+
+### Pending และ stage transition
+
+```http
+POST /package-workflows/pending
+POST /package-workflows/{workflowId}/return-to-verify
+POST /packages/{packageId}/transitions
+
+{ "action": "SEND_TO_MATCHING" }
+{ "action": "SEND_TO_CHECKING" }
+{ "action": "SEND_TO_DISPENSING" }
+```
+
+### Matching, Checking และ Dispensing
+
+```http
+POST /packages/{packageId}/matching/scan
+{ "medicineCode": "1200000096" }
+
+POST /packages/{packageId}/checking/validate-pair
+{ "medicineCode": "1200000096", "labelQrToken": "QR-..." }
+
+POST /packages/{packageId}/dispensing/status
+{ "status": "CALLED_WAITING" }
+{ "status": "RECEIVED" }
+```
+
+ทั้ง scan ที่ `MATCHED` และ `MISMATCHED` ถูกบันทึกใน `TBLPACKAGEEVENTS`
+แต่เฉพาะค่าที่ตรงเท่านั้นที่เปลี่ยนสถานะรายการยา
+
 ## Errors
 
 | Status | Meaning |

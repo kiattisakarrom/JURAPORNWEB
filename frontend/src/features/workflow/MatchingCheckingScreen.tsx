@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Barcode,
   CheckCircle2,
@@ -19,7 +19,15 @@ import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MedicationErrorReportModal } from "@/features/medication-error/MedicationErrorReportModal";
-import { getWorkflowBaskets, type WorkflowBasketItem, type WorkflowStage } from "@/lib/workstation-api";
+import type { WorkflowBasketItem, WorkflowStage } from "@/lib/workstation-api";
+import {
+  getPackages,
+  mapPackageToBasket,
+  scanPackageMatchingMedicine,
+  transitionPackage,
+  validatePackageCheckingPair,
+  type PackagePage,
+} from "@/lib/package-workflow-api";
 import { cn } from "@/lib/utils";
 
 function progressOf(basket: WorkflowBasketItem) {
@@ -52,6 +60,7 @@ export function MatchingCheckingScreen({
   stage: WorkflowStage;
   onOpenChecking: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guideCode, setGuideCode] = useState("");
   const [medicineCode, setMedicineCode] = useState("");
@@ -60,26 +69,21 @@ export function MatchingCheckingScreen({
   const [guideError, setGuideError] = useState<string | null>(null);
   const [medicineError, setMedicineError] = useState<string | null>(null);
   const [checkingError, setCheckingError] = useState<string | null>(null);
-  const [confirmedStickerItemId, setConfirmedStickerItemId] = useState<string | null>(null);
+  const [confirmedMedicineItemId, setConfirmedMedicineItemId] = useState<string | null>(null);
   const [selectedMedicationErrorItemId, setSelectedMedicationErrorItemId] = useState<string | null>(null);
   const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
   const [printedAt, setPrintedAt] = useState<Record<string, string>>({});
   const [checkedAt, setCheckedAt] = useState<Record<string, string>>({});
-  const [itemStatus, setItemStatus] = useState<Record<string, WorkflowBasketItem["items"][number]["status"]>>({});
-  const [basketStage, setBasketStage] = useState<Record<string, WorkflowStage>>({});
-  const { data = [], isLoading } = useQuery({ queryKey: ["workflow-baskets"], queryFn: getWorkflowBaskets });
+  const apiStage = stage.toUpperCase() as PackagePage;
+  const { data: itemPackages = [], isLoading } = useQuery({
+    queryKey: ["package-baskets", stage],
+    queryFn: () => getPackages({ pageNow: apiStage }),
+    refetchInterval: 10000,
+  });
 
   const baskets = useMemo(
-    () =>
-      data.map((basket) => ({
-        ...basket,
-        stage: basketStage[basket.id] ?? basket.stage,
-        items: basket.items.map((item) => ({
-          ...item,
-          status: itemStatus[item.id] ?? item.status,
-        })),
-      })),
-    [basketStage, data, itemStatus],
+    () => itemPackages.map((itemPackage) => mapPackageToBasket(itemPackage, stage)),
+    [itemPackages, stage],
   );
 
   const filtered = useMemo(() => {
@@ -104,7 +108,7 @@ export function MatchingCheckingScreen({
     setMedicineCode("");
     setStickerCode("");
     setCheckingDrugCode("");
-    setConfirmedStickerItemId(null);
+    setConfirmedMedicineItemId(null);
     setSelectedMedicationErrorItemId(null);
     setIsMedicationErrorOpen(false);
   }
@@ -116,10 +120,15 @@ export function MatchingCheckingScreen({
       return;
     }
 
-    const basket = baskets.find((item) =>
+    const matches = baskets.filter((item) =>
       item.stage === stage
-      && [item.guide, item.basket, item.vn].some((value) => value.toLowerCase() === code),
+      && [item.guide, item.basket, item.vn, item.hn].some((value) => value.toLowerCase() === code),
     );
+    if (matches.length > 1) {
+      setGuideError("พบผู้ป่วยมากกว่าหนึ่ง VN กรุณาเลือกใบนำทางจากรายการ");
+      return;
+    }
+    const basket = matches[0];
 
     if (!basket) {
       setGuideError(`ไม่พบใบนำทางที่ระบุในรายการ ${stage === "matching" ? "Matching" : "Checking"}`);
@@ -136,14 +145,28 @@ export function MatchingCheckingScreen({
     const code = value.trim().toLowerCase();
     if (!code) return;
 
-    const basket = baskets.find((item) =>
+    const matches = baskets.filter((item) =>
       item.stage === stage
-      && [item.guide, item.basket, item.vn].some((candidate) => candidate.toLowerCase() === code),
+      && [item.guide, item.basket, item.vn, item.hn].some((candidate) => candidate.toLowerCase() === code),
     );
+    if (matches.length > 1) {
+      setGuideError("พบผู้ป่วยมากกว่าหนึ่ง VN กรุณาเลือกใบนำทางจากรายการ");
+      return;
+    }
+    const basket = matches[0];
     if (basket) selectBasket(basket);
   }
 
-  function scanMedicine() {
+  async function refreshBaskets() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["package-baskets"] }),
+      queryClient.invalidateQueries({ queryKey: ["packages"] }),
+      queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
+      queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
+    ]);
+  }
+
+  async function scanMedicine() {
     if (!selected || stage !== "matching") return;
 
     const code = medicineCode.trim().toLowerCase();
@@ -152,55 +175,24 @@ export function MatchingCheckingScreen({
       return;
     }
 
-    const item = selected.items.find((drug) => drug.code.toLowerCase() === code);
-    if (!item) {
-      setMedicineError("รหัสยานี้ไม่อยู่ในใบนำทางที่เลือก");
-      return;
+    const item = selected.items.find((drug) => drug.code.toLowerCase() === code && drug.status !== "done");
+    try {
+      await scanPackageMatchingMedicine(selected.id, medicineCode.trim());
+      if (item) setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
+      setMedicineCode("");
+      setMedicineError(null);
+      await refreshBaskets();
+    } catch (error) {
+      setMedicineError(readWorkflowError(error));
     }
-
-    setItemStatus((current) => ({ ...current, [item.id]: "done" }));
-    setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
-    setMedicineCode("");
-    setMedicineError(null);
   }
 
   function reprintItem(item: WorkflowBasketItem["items"][number]) {
     setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
   }
 
-  function confirmSticker() {
+  function confirmCheckingMedicine() {
     if (!selected || stage !== "checking") return;
-
-    const code = stickerCode.trim().toLowerCase();
-    if (!code) {
-      setCheckingError("กรุณาสแกนรหัสสติกเกอร์");
-      return;
-    }
-
-    const item = selected.items.find((drug) => drug.stickerCode.toLowerCase() === code);
-    if (!item) {
-      setCheckingError("รหัสสติกเกอร์นี้ไม่อยู่ในใบนำทางที่เลือก");
-      setConfirmedStickerItemId(null);
-      return;
-    }
-
-    if (item.status === "done") {
-      setCheckingError("รายการยานี้ตรวจสอบผ่านแล้ว");
-      setConfirmedStickerItemId(null);
-      return;
-    }
-
-    setConfirmedStickerItemId(item.id);
-    setCheckingError(null);
-  }
-
-  function verifyStickerWithDrug() {
-    if (!selected || stage !== "checking") return;
-
-    if (!confirmedStickerItemId) {
-      setCheckingError("กรุณาสแกนรหัสสติกเกอร์ก่อน");
-      return;
-    }
 
     const code = checkingDrugCode.trim().toLowerCase();
     if (!code) {
@@ -208,42 +200,83 @@ export function MatchingCheckingScreen({
       return;
     }
 
-    const stickerItem = selected.items.find((item) => item.id === confirmedStickerItemId);
-    const drugItem = selected.items.find((item) => item.code.toLowerCase() === code);
-    if (!stickerItem || !drugItem || stickerItem.id !== drugItem.id) {
-      setCheckingError("รหัสสติกเกอร์ไม่ตรงกับรหัสยาที่กล่อง กรุณาตรวจสอบอีกครั้ง");
-      setStickerCode("");
-      setCheckingDrugCode("");
-      setConfirmedStickerItemId(null);
+    const item = selected.items.find((drug) => drug.code.toLowerCase() === code);
+    if (!item) {
+      setCheckingError("ยังไม่พบรหัสยานี้ กรุณาสแกน QR ฉลากเพื่อบันทึกผลตรวจไม่ตรงกัน");
+      setConfirmedMedicineItemId("unknown-medicine-code");
       return;
     }
 
-    setItemStatus((current) => ({ ...current, [stickerItem.id]: "done" }));
-    setCheckedAt((current) => ({ ...current, [stickerItem.id]: currentBangkokTime() }));
-    setStickerCode("");
-    setCheckingDrugCode("");
-    setConfirmedStickerItemId(null);
+    if (item.status === "done") {
+      setCheckingError("รายการยานี้ตรวจสอบผ่านแล้ว");
+      setConfirmedMedicineItemId(null);
+      return;
+    }
+
+    setConfirmedMedicineItemId(item.id);
     setCheckingError(null);
   }
 
-  function sendSelectedToChecking() {
+  async function verifyStickerWithDrug() {
+    if (!selected || stage !== "checking") return;
+
+    if (!confirmedMedicineItemId) {
+      setCheckingError("กรุณาสแกนรหัสยาที่กล่องก่อน");
+      return;
+    }
+
+    if (!stickerCode.trim()) {
+      setCheckingError("กรุณาสแกน QR บนสติกเกอร์ยา");
+      return;
+    }
+
+    const drugItem = selected.items.find((item) => item.id === confirmedMedicineItemId);
+    const medicineCodeValue = drugItem?.code ?? checkingDrugCode.trim();
+
+    try {
+      const result = await validatePackageCheckingPair(selected.id, medicineCodeValue, stickerCode.trim());
+      if (!result.MATCHED) {
+        setCheckingError(result.MESSAGE);
+        setStickerCode("");
+        setCheckingDrugCode("");
+        setConfirmedMedicineItemId(null);
+        return;
+      }
+      if (drugItem) setCheckedAt((current) => ({ ...current, [drugItem.id]: currentBangkokTime() }));
+      setStickerCode("");
+      setCheckingDrugCode("");
+      setConfirmedMedicineItemId(null);
+      setCheckingError(null);
+      await refreshBaskets();
+    } catch (error) {
+      setCheckingError(readWorkflowError(error));
+    }
+  }
+
+  async function sendSelectedToChecking() {
     if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
 
-    setBasketStage((current) => ({
-      ...current,
-      [selected.id]: "checking",
-    }));
-    setItemStatus((current) => {
-      const next = { ...current };
-      selected.items.forEach((item) => {
-        next[item.id] = "wait";
-      });
-      return next;
-    });
-    setSelectedId(null);
-    setSelectedMedicationErrorItemId(null);
-    setIsMedicationErrorOpen(false);
-    onOpenChecking();
+    try {
+      await transitionPackage(selected.id, "SEND_TO_CHECKING");
+      await refreshBaskets();
+      setSelectedId(null);
+      setSelectedMedicationErrorItemId(null);
+      setIsMedicationErrorOpen(false);
+      onOpenChecking();
+    } catch (error) {
+      setMedicineError(readWorkflowError(error));
+    }
+  }
+
+  async function sendSelectedToDispensing() {
+    if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
+    try {
+      await transitionPackage(selected.id, "SEND_TO_DISPENSING");
+      await refreshBaskets();
+      setSelectedId(null);
+    } catch (error) {
+      setCheckingError(readWorkflowError(error));
+    }
   }
 
   return (
@@ -373,12 +406,12 @@ export function MatchingCheckingScreen({
                         setMedicineError(null);
                       }}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") scanMedicine();
+                        if (event.key === "Enter") void scanMedicine();
                       }}
                       placeholder="กรอกรหัสยาเพื่อพิมพ์สติกเกอร์อัตโนมัติ"
                       value={medicineCode}
                     />
-                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={scanMedicine} type="button">
+                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={() => void scanMedicine()} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
@@ -494,7 +527,7 @@ export function MatchingCheckingScreen({
                 <Button
                   className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
                   disabled={selectedProgress.done !== selectedProgress.total}
-                  onClick={sendSelectedToChecking}
+                  onClick={() => void sendSelectedToChecking()}
                 >
                   <LockKeyhole className="h-4 w-4" />
                   ส่งไปหน้า Checking
@@ -511,26 +544,27 @@ export function MatchingCheckingScreen({
           checkedAt={checkedAt}
           checkingDrugCode={checkingDrugCode}
           checkingError={checkingError}
-          confirmedStickerItemId={confirmedStickerItemId}
+          confirmedMedicineItemId={confirmedMedicineItemId}
           guideCode={guideCode}
           guideError={guideError}
           isLoading={isLoading}
-          onConfirmSticker={confirmSticker}
+          onConfirmMedicine={confirmCheckingMedicine}
           onFindGuide={findGuide}
           onOpenMedicationError={() => setIsMedicationErrorOpen(true)}
           onSelect={selectBasket}
           onSelectMedicationErrorItem={setSelectedMedicationErrorItemId}
+          onSendToDispensing={() => void sendSelectedToDispensing()}
           onUpdateDrugCode={(value) => {
             setCheckingDrugCode(value);
             setCheckingError(null);
+            setConfirmedMedicineItemId(null);
           }}
           onUpdateGuideCode={updateGuideCode}
           onUpdateStickerCode={(value) => {
             setStickerCode(value);
             setCheckingError(null);
-            setConfirmedStickerItemId(null);
           }}
-          onVerifyPair={verifyStickerWithDrug}
+          onVerifyPair={() => void verifyStickerWithDrug()}
           selected={selected}
           selectedMedicationErrorItemId={selectedMedicationErrorItemId}
           stickerCode={stickerCode}
@@ -563,18 +597,19 @@ function CheckingWorkspace({
   stickerCode,
   checkingDrugCode,
   checkingError,
-  confirmedStickerItemId,
+  confirmedMedicineItemId,
   checkedAt,
   onSelect,
   onFindGuide,
   onUpdateGuideCode,
   onUpdateStickerCode,
   onUpdateDrugCode,
-  onConfirmSticker,
+  onConfirmMedicine,
   onVerifyPair,
   selectedMedicationErrorItemId,
   onSelectMedicationErrorItem,
   onOpenMedicationError,
+  onSendToDispensing,
 }: {
   baskets: WorkflowBasketItem[];
   selected?: WorkflowBasketItem;
@@ -584,21 +619,22 @@ function CheckingWorkspace({
   stickerCode: string;
   checkingDrugCode: string;
   checkingError: string | null;
-  confirmedStickerItemId: string | null;
+  confirmedMedicineItemId: string | null;
   checkedAt: Record<string, string>;
   onSelect: (basket: WorkflowBasketItem) => void;
   onFindGuide: () => void;
   onUpdateGuideCode: (value: string) => void;
   onUpdateStickerCode: (value: string) => void;
   onUpdateDrugCode: (value: string) => void;
-  onConfirmSticker: () => void;
+  onConfirmMedicine: () => void;
   onVerifyPair: () => void;
   selectedMedicationErrorItemId: string | null;
   onSelectMedicationErrorItem: (id: string) => void;
   onOpenMedicationError: () => void;
+  onSendToDispensing: () => void;
 }) {
   const selectedProgress = selected ? progressOf(selected) : undefined;
-  const confirmedStickerItem = selected?.items.find((item) => item.id === confirmedStickerItemId);
+  const confirmedMedicineItem = selected?.items.find((item) => item.id === confirmedMedicineItemId);
 
   return (
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
@@ -707,51 +743,51 @@ function CheckingWorkspace({
               <h3 className="text-base font-black text-slate-900">ตรวจสอบสติกเกอร์กับตัวยา</h3>
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
                 <div>
-                  <label className="text-sm font-black text-slate-700" htmlFor="checking-sticker-code">1. สแกนรหัสสติกเกอร์</label>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-drug-code">1. สแกนรหัสยาที่กล่อง</label>
                   <div className="relative mt-2">
                     <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                     <input
                       className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      id="checking-sticker-code"
-                      onChange={(event) => onUpdateStickerCode(event.target.value)}
+                      id="checking-drug-code"
+                      onChange={(event) => onUpdateDrugCode(event.target.value)}
                       onKeyDown={(event) => {
-                        if (event.key === "Enter") onConfirmSticker();
+                        if (event.key === "Enter") onConfirmMedicine();
                       }}
-                      placeholder="สแกนรหัสบนสติกเกอร์ยา"
-                      value={stickerCode}
+                      placeholder="สแกนรหัสยาบนกล่อง"
+                      value={checkingDrugCode}
                     />
-                    <button aria-label="ยืนยันรหัสสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onConfirmSticker} type="button">
+                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onConfirmMedicine} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-sm font-black text-slate-700" htmlFor="checking-drug-code">2. สแกนรหัสยาที่กล่อง</label>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-sticker-code">2. สแกน QR บนสติกเกอร์</label>
                   <div className="relative mt-2">
                     <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                     <input
                       className="h-14 w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 text-sm font-semibold text-slate-800 shadow-sm outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                      disabled={!confirmedStickerItemId}
-                      id="checking-drug-code"
-                      onChange={(event) => onUpdateDrugCode(event.target.value)}
+                      disabled={!confirmedMedicineItemId}
+                      id="checking-sticker-code"
+                      onChange={(event) => onUpdateStickerCode(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") onVerifyPair();
                       }}
-                      placeholder={confirmedStickerItemId ? "สแกนรหัสยาบนกล่องเพื่อตรวจสอบ" : "สแกนสติกเกอร์ก่อน"}
-                      value={checkingDrugCode}
+                      placeholder={confirmedMedicineItemId ? "สแกน QR บนสติกเกอร์เพื่อตรวจสอบ" : "สแกนรหัสยาที่กล่องก่อน"}
+                      value={stickerCode}
                     />
-                    <button aria-label="ตรวจสอบรหัสยากับสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition enabled:hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" disabled={!confirmedStickerItemId} onClick={onVerifyPair} type="button">
+                    <button aria-label="ตรวจสอบรหัสยากับสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition enabled:hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" disabled={!confirmedMedicineItemId} onClick={onVerifyPair} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
                 </div>
               </div>
 
-              {confirmedStickerItem ? (
+              {confirmedMedicineItem ? (
                 <p className="mt-4 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
                   <Info className="h-4 w-4 shrink-0" />
-                  สแกนสติกเกอร์ของ {confirmedStickerItem.name} แล้ว กรุณาสแกนรหัสยาที่กล่องเพื่อตรวจสอบ
+                  สแกนยา {confirmedMedicineItem.name} แล้ว กรุณาสแกน QR บนสติกเกอร์เพื่อตรวจสอบ
                 </p>
               ) : (
                 <p className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm"><Info className="h-4 w-4 shrink-0" />ระบบจะผ่านรายการเมื่อรหัสสติกเกอร์และรหัสยาที่กล่องตรงกันเท่านั้น</p>
@@ -762,7 +798,7 @@ function CheckingWorkspace({
             <div className="mt-5 space-y-3">
               {selected.items.map((item, index) => {
                 const isDone = item.status === "done";
-                const isPending = item.id === confirmedStickerItemId;
+                const isPending = item.id === confirmedMedicineItemId;
                 const isSelectedForMedicationError = item.id === selectedMedicationErrorItemId;
                 return (
                   <div
@@ -825,9 +861,13 @@ function CheckingWorkspace({
               <RefreshCw className="h-4 w-4" />
               รายงาน ME
             </Button>
-            <Button className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100" disabled={selectedProgress.done !== selectedProgress.total}>
+            <Button
+              className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
+              disabled={selectedProgress.done !== selectedProgress.total}
+              onClick={onSendToDispensing}
+            >
               <PackageCheck className="h-4 w-4" />
-              ส่ง AGV
+              ส่งไปหน้า Dispensing
             </Button>
           </div>
         </section>
@@ -836,4 +876,8 @@ function CheckingWorkspace({
       )}
     </div>
   );
+}
+
+function readWorkflowError(error: unknown) {
+  return error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการบันทึก Workflow";
 }

@@ -41,13 +41,22 @@ type HadChecklistItemId = (typeof hadChecklistItems)[number]["id"];
 export function PatientPanel({
   patient,
   pn,
+  verifyAccess,
   onClose,
   onVerify,
 }: {
   patient: PatientQueueItem;
   pn?: string;
+  verifyAccess: {
+    workflowId: string | null;
+    lockToken: string | null;
+    sessionId: string;
+    isReadOnly: boolean;
+    isLoading: boolean;
+    ownerName?: string | null;
+  } | null;
   onClose: () => void;
-  onVerify: () => void;
+  onVerify: (input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) => Promise<void>;
 }) {
   const [hasRequestedStockCheck, setHasRequestedStockCheck] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -59,6 +68,9 @@ export function PatientPanel({
   const [medicationErrorSeverity, setMedicationErrorSeverity] = useState<MedicationErrorSeverityKey | null>(null);
   const [medicationErrorDescription, setMedicationErrorDescription] = useState("");
   const [selectedMedicationErrorDrugId, setSelectedMedicationErrorDrugId] = useState<string | null>(null);
+  const [selectedPackageDrugIds, setSelectedPackageDrugIds] = useState<Set<string>>(() => new Set());
+  const [isUrgentPackage, setIsUrgentPackage] = useState(false);
+  const [isSubmittingVerify, setIsSubmittingVerify] = useState(false);
   const [note, setNote] = useState("");
 
   const { data: profile } = useQuery({
@@ -113,6 +125,29 @@ export function PatientPanel({
 
   function toggleHadChecklistItem(id: HadChecklistItemId) {
     setHadChecklist((current) => ({ ...current, [id]: !current[id] }));
+  }
+
+  function togglePackageDrug(drugId: string) {
+    setSelectedPackageDrugIds((current) => {
+      const next = new Set(current);
+      if (next.has(drugId)) next.delete(drugId);
+      else next.add(drugId);
+      return next;
+    });
+  }
+
+  async function submitVerify() {
+    if (!verifyAccess?.lockToken || verifyAccess.isReadOnly || (isUrgentPackage && selectedPackageDrugIds.size === 0)) return;
+    setIsSubmittingVerify(true);
+    try {
+      await onVerify({
+        mode: isUrgentPackage ? "URGENT" : "NORMAL",
+        selectedDrugIds: Array.from(selectedPackageDrugIds),
+        note,
+      });
+    } finally {
+      setIsSubmittingVerify(false);
+    }
   }
 
   return createPortal(
@@ -172,6 +207,15 @@ export function PatientPanel({
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
+            {verifyAccess?.isLoading ? (
+              <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-black text-blue-800">กำลังขอล็อก VN สำหรับ Verify...</div>
+            ) : verifyAccess?.isReadOnly ? (
+              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-black leading-6 text-amber-800">
+                เปิดแบบอ่านอย่างเดียว {patient.activePackageId ? "เนื่องจากมีแพ็กเกจยาที่กำลังดำเนินการ ต้องรอผู้ป่วยรับยารอบนี้ก่อน" : `เนื่องจาก VN ถูกล็อกโดย ${verifyAccess.ownerName ?? "ผู้ใช้อื่น"}`}
+              </div>
+            ) : (
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">ล็อก VN สำหรับการ Verify แล้ว ระบบต่ออายุล็อกทุก 30 วินาที</div>
+            )}
             <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900 shadow-sm">
               <div className="flex gap-3">
                 <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
@@ -201,17 +245,24 @@ export function PatientPanel({
                   const isSelectedForMedicationError = selectedMedicationErrorDrugId === drug.id;
 
                   return (
-                    <button
+                    <div
                       aria-pressed={isSelectedForMedicationError}
                       className={cn(
-                        "w-full rounded-2xl border p-4 text-left shadow-sm transition focus-visible:ring-2 focus-visible:ring-blue-500",
+                        "w-full cursor-pointer rounded-2xl border p-4 text-left shadow-sm transition focus-visible:ring-2 focus-visible:ring-blue-500",
                         isSelectedForMedicationError
                           ? "border-blue-400 bg-blue-50 shadow-blue-100 ring-1 ring-blue-200"
                           : "border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40",
                       )}
                       key={drug.id}
                       onClick={() => setSelectedMedicationErrorDrugId(drug.id)}
-                      type="button"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedMedicationErrorDrugId(drug.id);
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
                     >
                       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
                         <div className="flex min-w-0 gap-3">
@@ -229,6 +280,11 @@ export function PatientPanel({
                               </span>
                               {isSelectedForMedicationError ? (
                                 <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                              ) : null}
+                              {drug.workflowStatus ? (
+                                <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black text-indigo-700">
+                                  {packageStatusLabel(drug.workflowStatus, drug.packagePriority)}
+                                </span>
                               ) : null}
                             </div>
                             <p className="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-slate-500">
@@ -251,6 +307,18 @@ export function PatientPanel({
                           </div>
                         </div>
                         <div className="flex items-end justify-between gap-5 sm:block sm:text-right">
+                          {isUrgentPackage ? (
+                            <label className="mb-3 flex cursor-pointer items-center justify-end gap-2 text-xs font-black text-blue-700" onClick={(event) => event.stopPropagation()}>
+                              <input
+                                checked={selectedPackageDrugIds.has(drug.id)}
+                                className="h-5 w-5 accent-blue-700"
+                                disabled={verifyAccess?.isReadOnly || Boolean(drug.workflowStatus)}
+                                onChange={() => togglePackageDrug(drug.id)}
+                                type="checkbox"
+                              />
+                              ส่งรอบด่วนนี้
+                            </label>
+                          ) : null}
                           <div>
                             <div className="text-sm font-black text-indigo-500">{drug.source}</div>
                             <div className="mt-1 text-xs font-bold text-slate-400">{drug.machineCode}</div>
@@ -258,7 +326,7 @@ export function PatientPanel({
                           <div className="mt-2 text-base font-black text-slate-900">{dose.quantity}</div>
                         </div>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -269,6 +337,7 @@ export function PatientPanel({
               <textarea
                 className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                 id="verify-note"
+                disabled={verifyAccess?.isReadOnly}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="พิมพ์บันทึกเพิ่มเติม..."
                 value={note}
@@ -301,6 +370,22 @@ export function PatientPanel({
           </div>
 
           <footer className="safe-bottom shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-7">
+            <label className="mb-3 flex cursor-pointer items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-800">
+              <span>
+                ยาด่วน
+                <span className="ml-2 text-xs font-bold text-rose-600">เลือกเฉพาะรายการยาที่ต้องส่งทันที</span>
+              </span>
+              <input
+                checked={isUrgentPackage}
+                className="h-5 w-5 accent-rose-600"
+                disabled={verifyAccess?.isReadOnly || verifyAccess?.isLoading}
+                onChange={(event) => {
+                  setIsUrgentPackage(event.target.checked);
+                  if (!event.target.checked) setSelectedPackageDrugIds(new Set());
+                }}
+                type="checkbox"
+              />
+            </label>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               <Button className="h-11 rounded-xl border-slate-200" onClick={() => setIsHadOpen(true)} variant="outline">
                 <ClipboardCheck className="h-4 w-4" />
@@ -321,9 +406,13 @@ export function PatientPanel({
                 <RefreshCw className="h-4 w-4" />
                 {selectedMedicationErrorDrug ? "รายงาน ME" : "เลือกรายการยาก่อน"}
               </Button>
-              <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={onVerify}>
+              <Button
+                className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
+                disabled={!verifyAccess?.lockToken || verifyAccess.isReadOnly || verifyAccess.isLoading || isSubmittingVerify || (isUrgentPackage && selectedPackageDrugIds.size === 0)}
+                onClick={() => void submitVerify()}
+              >
                 <CheckCircle2 className="h-4 w-4" />
-                Verify & ส่ง MDR
+                {isSubmittingVerify ? "กำลังบันทึก..." : isUrgentPackage ? `Verify ยาด่วน (${selectedPackageDrugIds.size})` : "Verify PN & ส่งต่อ"}
               </Button>
             </div>
           </footer>
@@ -394,6 +483,20 @@ function fallbackLabs(patient: PatientQueueItem): PatientLabResult[] {
     { id: `${patient.id}-fallback-k`, key: "K+", value: "4.2", unit: "mmol/L" },
     { id: `${patient.id}-fallback-alt`, key: "ALT", value: "28", unit: "U/L" },
   ];
+}
+
+function packageStatusLabel(status: string, priority?: DrugItem["packagePriority"]) {
+  const prefix = priority === "URGENT" ? "ยาด่วน · " : "";
+  const labels: Record<string, string> = {
+    PICKING: "กำลังจัดยา",
+    MATCHING: "กำลัง Matching",
+    CHECKING: "กำลัง Checking",
+    AWAITING_DISPENSING: "รอส่งจ่ายยา",
+    DISPENSING: "รอรับยา",
+    COMPLETE: "เสร็จสิ้น",
+    RECEIVED: "รับยาแล้ว",
+  };
+  return `${prefix}${labels[status] ?? status}`;
 }
 
 const headerLabDefaults = [

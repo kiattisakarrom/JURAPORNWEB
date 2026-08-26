@@ -26,6 +26,9 @@ class EnvironmentVariables {
   @IsIn(['development', 'test', 'production'])
   NODE_ENV = 'development';
 
+  @IsIn(['local', 'live'])
+  DB_PROFILE = 'local';
+
   @Type(() => Number)
   @IsInt()
   @Min(1)

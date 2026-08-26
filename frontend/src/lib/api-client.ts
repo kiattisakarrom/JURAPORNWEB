@@ -47,6 +47,46 @@ export async function apiGet<T>(
   return body as T;
 }
 
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const response = await fetch(url, {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  const responseBody = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+  }
+
+  return responseBody as T;
+}
+
+export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
+  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const response = await fetch(url, {
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    method: "DELETE",
+  });
+
+  const responseBody = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+  }
+
+  return responseBody as T;
+}
+
 async function parseResponseBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") ?? "";
 

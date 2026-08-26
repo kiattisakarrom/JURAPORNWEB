@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, ClipboardCheck, FileWarning, PackageCheck, Pill, RefreshCw, ScanBarcode } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
@@ -12,10 +12,23 @@ import { SidebarNav } from "@/features/shell/SidebarNav";
 import { WorkspaceHeader, type WorkspaceDateRange } from "@/features/shell/WorkspaceHeader";
 import type { WorkspaceNavItem, WorkspaceScreen } from "@/features/shell/shell-types";
 import { MatchingCheckingScreen } from "@/features/workflow/MatchingCheckingScreen";
-import { getPharmacyQueue } from "@/lib/pharmacy-api";
 import { cn } from "@/lib/utils";
 import { getVerifyPrescriptionQueue, VERIFY_VISITS_PER_PAGE } from "@/lib/verify-prescriptions-api";
-import type { QueueStage, QueueSummary } from "@/types/pharmacy";
+import {
+  claimVerifyLock,
+  createIdempotencyKey,
+  getPackages,
+  getPackageWorkflows,
+  getVerifySessionId,
+  heartbeatVerifyLock,
+  releaseVerifyLock,
+  returnPackageWorkflowToVerify,
+  setPackageWorkflowPending,
+  transitionPackage,
+  verifyPackagePrescription,
+} from "@/lib/package-workflow-api";
+import { mergeVerifyQueueWithPackageWorkflow } from "@/lib/package-workflow-adapter";
+import type { PatientQueueItem, QueueStage, QueueSummary } from "@/types/pharmacy";
 import { CheckingCheckoutPopup } from "@/features/checking/CheckingCheckoutPopup";
 import { DispensingPopup } from "@/features/dispensing/DispensingPopup";
 import { MatchingPopup } from "@/features/matching/MatchingPopup";
@@ -64,24 +77,27 @@ function useLiveClock() {
 }
 
 export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
+  const queryClient = useQueryClient();
   const [activeScreen, setActiveScreen] = useState<WorkspaceScreen>("verify");
   const [activeTab, setActiveTab] = useState<QueueStage>("verify");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<string | null>(null);
-  const [verifiedPrescriptionIds, setVerifiedPrescriptionIds] = useState<Set<string>>(() => new Set());
-  const [sentToMatchingPatientIds, setSentToMatchingPatientIds] = useState<Set<string>>(() => new Set());
+  const [selectedVerifyAccess, setSelectedVerifyAccess] = useState<{
+    workflowId: string | null;
+    lockToken: string | null;
+    sessionId: string;
+    isReadOnly: boolean;
+    isLoading: boolean;
+    ownerName?: string | null;
+  } | null>(null);
+  const verifyAccessRequestRef = useRef(0);
   const [verifyPage, setVerifyPage] = useState(1);
   const [dateRange, setDateRange] = useState<WorkspaceDateRange>(() => {
     const today = getBangkokDate();
     return { fromDate: today, toDate: today };
   });
   const liveTime = useLiveClock();
-  const { data: mockQueue, isLoading: isMockQueueLoading } = useQuery({
-    queryKey: ["pharmacy-queue"],
-    queryFn: getPharmacyQueue,
-    refetchInterval: 15000,
-  });
   const {
     data: verifyQueue,
     error: verifyApiError,
@@ -97,12 +113,40 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     refetchInterval: 30000,
     retry: 1,
   });
+  const {
+    data: packageWorkflows = [],
+    error: packageWorkflowError,
+    isError: isPackageWorkflowError,
+    isLoading: isPackageWorkflowLoading,
+  } = useQuery({
+    queryKey: ["package-workflows", dateRange.fromDate, dateRange.toDate],
+    queryFn: () => getPackageWorkflows(dateRange),
+    enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
+    refetchInterval: 15000,
+    retry: 1,
+  });
+  const {
+    data: packages = [],
+    error: packagesError,
+    isError: isPackagesError,
+    isLoading: isPackagesLoading,
+  } = useQuery({
+    queryKey: ["packages", dateRange.fromDate, dateRange.toDate],
+    queryFn: () => getPackages(dateRange),
+    enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
+    refetchInterval: 15000,
+    retry: 1,
+  });
 
   const patients = useMemo(() => {
-    const verifyPatients = verifyQueue?.patients ?? [];
-    const nonVerifyPatients = (mockQueue?.patients ?? []).filter((patient) => patient.stage !== "verify");
-    return [...verifyPatients, ...nonVerifyPatients];
-  }, [mockQueue?.patients, verifyQueue?.patients]);
+    return mergeVerifyQueueWithPackageWorkflow(verifyQueue?.patients ?? [], packageWorkflows, packages);
+  }, [packageWorkflows, packages, verifyQueue?.patients]);
+  const verifiedPrescriptionIds = useMemo(
+    () => new Set(patients.flatMap((patient) => patient.prescriptions
+      ?.filter((prescription) => prescription.verifyStatus === "VERIFIED_WAITING" || prescription.verifyStatus === "PACKAGED")
+      .map((prescription) => prescription.id) ?? [])),
+    [patients],
+  );
   const filteredPatients = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return patients.filter((patient) => {
@@ -123,18 +167,15 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     [currentPage, filteredPatients],
   );
   const summary = useMemo<QueueSummary>(() => {
-    const fallback = createEmptyQueueSummary();
-    const base = mockQueue?.summary ?? fallback;
-    const nonVerifyCount = (mockQueue?.patients ?? []).filter((patient) => patient.stage !== "verify").length;
-
-    return {
-      ...base,
-      all: (verifyQueue?.totalVisits ?? 0) + nonVerifyCount,
-      verify: verifyQueue?.totalPrescriptions ?? 0,
-    };
-  }, [mockQueue?.patients, mockQueue?.summary, verifyQueue?.totalPrescriptions, verifyQueue?.totalVisits]);
-  const isCurrentQueueLoading = activeTab === "verify" || activeTab === "all" ? isVerifyLoading : isMockQueueLoading;
-  const showVerifyError = activeTab === "verify" && isVerifyApiError;
+    const next = createEmptyQueueSummary();
+    next.all = patients.length;
+    patients.forEach((patient) => {
+      next[patient.stage] += patient.stage === "verify" ? patient.prescriptions?.length ?? 1 : 1;
+    });
+    return next;
+  }, [patients]);
+  const isCurrentQueueLoading = isPackageWorkflowLoading || isPackagesLoading || ((activeTab === "verify" || activeTab === "all") && isVerifyLoading);
+  const showVerifyError = activeTab === "verify" && (isVerifyApiError || isPackageWorkflowError || isPackagesError);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
   const selectedPrescription = selectedPatient?.prescriptions?.find((prescription) => prescription.id === selectedPrescriptionId);
@@ -162,27 +203,62 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           ? "matching"
           : "verify";
 
+  useEffect(() => {
+    if (!selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken || selectedVerifyAccess.isReadOnly) return;
+    const { workflowId, lockToken, sessionId } = selectedVerifyAccess;
+    const timer = window.setInterval(() => {
+      void heartbeatVerifyLock(workflowId, { lockToken, sessionId })
+        .then(() => queryClient.invalidateQueries({ queryKey: ["package-workflows"] }))
+        .catch((error) => {
+          setSelectedVerifyAccess((current) => current ? { ...current, lockToken: null, isReadOnly: true } : current);
+          toast.error(`ล็อก Verify หมดอายุ: ${readQueryError(error)}`);
+        });
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [queryClient, selectedVerifyAccess]);
+
   function selectTab(tabId: QueueStage) {
     setActiveTab(tabId);
     setVerifyPage(1);
-    setSelectedId(null);
-    setSelectedPrescriptionId(null);
+    closeSelectedItem();
   }
 
   function selectScreen(screen: WorkspaceScreen) {
     setActiveScreen(screen);
-    setSelectedId(null);
-    setSelectedPrescriptionId(null);
+    closeSelectedItem();
   }
 
   function selectQueueItem(id: string, prescriptionId?: string) {
+    const canReuseVerifyAccess = selectedPatient?.id === id && Boolean(selectedVerifyAccess?.lockToken);
+    verifyAccessRequestRef.current += 1;
+    if (!canReuseVerifyAccess && selectedVerifyAccess?.workflowId && selectedVerifyAccess.lockToken) {
+      void releaseVerifyLock(selectedVerifyAccess.workflowId, {
+        lockToken: selectedVerifyAccess.lockToken,
+        sessionId: selectedVerifyAccess.sessionId,
+      }).catch(() => undefined);
+    }
     setSelectedId(id);
     setSelectedPrescriptionId(prescriptionId ?? null);
+    const patient = patients.find((candidate) => candidate.id === id);
+    if (patient?.stage === "verify" && prescriptionId) {
+      if (!canReuseVerifyAccess) void prepareVerifyAccess(patient);
+    } else {
+      setSelectedVerifyAccess(null);
+    }
   }
 
   function closeSelectedItem() {
+    verifyAccessRequestRef.current += 1;
+    const access = selectedVerifyAccess;
     setSelectedId(null);
     setSelectedPrescriptionId(null);
+    setSelectedVerifyAccess(null);
+    if (access?.workflowId && access.lockToken) {
+      void releaseVerifyLock(access.workflowId, { lockToken: access.lockToken, sessionId: access.sessionId })
+        .then(() => refreshPackageData())
+        .catch(() => undefined);
+    }
   }
 
   function updateDateRange(nextDateRange: WorkspaceDateRange) {
@@ -196,20 +272,134 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     setVerifyPage(1);
   }
 
-  function verifySelectedPrescription() {
-    if (!selectedPrescription) return;
-
-    setVerifiedPrescriptionIds((current) => new Set(current).add(selectedPrescription.id));
-    toast.success(`PN ${selectedPrescription.pn} Verify และส่ง MDR แล้ว`);
-    closeSelectedItem();
+  async function refreshPackageData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
+      queryClient.invalidateQueries({ queryKey: ["packages"] }),
+      queryClient.invalidateQueries({ queryKey: ["package-baskets"] }),
+      queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
+    ]);
   }
 
-  function sendPatientToMatching(patientId: string) {
-    const patient = patients.find((item) => item.id === patientId);
-    if (!patient) return;
+  async function prepareVerifyAccess(patient: PatientQueueItem) {
+    const requestId = ++verifyAccessRequestRef.current;
+    const sessionId = getVerifySessionId();
+    if (!patient.date) {
+      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: false });
+      return;
+    }
+    if (patient.activePackageId) {
+      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: false, ownerName: "รอรับแพ็กเกจยารอบปัจจุบัน" });
+      return;
+    }
 
-    setSentToMatchingPatientIds((current) => new Set(current).add(patientId));
-    toast.success(`VN ${patient.vn} Verify แล้ว`);
+    setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: true });
+    try {
+      const workflow = await claimVerifyLock({
+        visitDate: patient.date.slice(0, 10),
+        visitNumber: patient.vn,
+        sessionId,
+        ownerName: "Pharmacist",
+        workstationCode: "VERIFY-WEB",
+      });
+      if (verifyAccessRequestRef.current !== requestId) {
+        if (workflow.VERIFY_LOCK.LOCK_TOKEN) {
+          await releaseVerifyLock(workflow.WORKFLOW_ID, {
+            lockToken: workflow.VERIFY_LOCK.LOCK_TOKEN,
+            sessionId,
+          }).catch(() => undefined);
+        }
+        return;
+      }
+      setSelectedVerifyAccess({
+        workflowId: workflow.WORKFLOW_ID,
+        lockToken: workflow.VERIFY_LOCK.LOCK_TOKEN,
+        sessionId,
+        isReadOnly: !workflow.VERIFY_LOCK.LOCK_TOKEN,
+        isLoading: false,
+        ownerName: workflow.VERIFY_LOCK.OWNER_NAME,
+      });
+      await refreshPackageData();
+    } catch (error) {
+      if (verifyAccessRequestRef.current !== requestId) return;
+      setSelectedVerifyAccess({
+        workflowId: patient.workflowId ?? null,
+        lockToken: null,
+        sessionId,
+        isReadOnly: true,
+        isLoading: false,
+        ownerName: patient.verifyLock?.ownerName,
+      });
+      toast.error(`เปิดแบบอ่านอย่างเดียว: ${readQueryError(error)}`);
+    }
+  }
+
+  async function verifySelectedPrescription(input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) {
+    if (!selectedPrescription || !selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken) return;
+    const patient = selectedPatientForPanel;
+    if (!patient?.date) return;
+    try {
+      const selectedDrugIds = new Set(input.selectedDrugIds);
+      const selectedItems = selectedPrescription.drugs
+        .filter((drug) => selectedDrugIds.has(drug.id) && drug.MEDICINECODE && drug.itemSequence)
+        .map((drug) => ({ medicineCode: drug.MEDICINECODE!, itemSeq: drug.itemSequence! }));
+      const result = await verifyPackagePrescription(selectedVerifyAccess.workflowId, {
+        lockToken: selectedVerifyAccess.lockToken,
+        sessionId: selectedVerifyAccess.sessionId,
+        prescriptionNumber: selectedPrescription.pn,
+        mode: input.mode,
+        packagePriority: input.mode === "URGENT" ? "URGENT" : "NORMAL",
+        selectedItems: input.mode === "URGENT" ? selectedItems : undefined,
+        note: input.note || undefined,
+        actorName: "Pharmacist",
+        idempotencyKey: createIdempotencyKey(),
+      });
+      await refreshPackageData();
+      if (result.PACKAGE_CREATED) {
+        toast.success(`${input.mode === "URGENT" ? "สร้างแพ็กเกจยาด่วน" : "Verify ครบและส่งไป Picking"} แล้ว`);
+      } else {
+        toast.success(`PN ${selectedPrescription.pn} Verify แล้ว รออีก ${result.WAITING_PRESCRIPTIONS.length} PN`);
+      }
+      closeSelectedItem();
+    } catch (error) {
+      toast.error(readQueryError(error));
+    }
+  }
+
+  async function runPrimaryAction(patient: PatientQueueItem) {
+    try {
+      if (patient.stage === "verify") {
+        const prescription = patient.prescriptions?.find((item) => item.verifyStatus !== "PACKAGED") ?? patient.prescriptions?.[0];
+        if (prescription) selectQueueItem(patient.id, prescription.id);
+        return;
+      } else if (patient.stage === "picking" && patient.packageId) {
+        await transitionPackage(patient.packageId, "SEND_TO_MATCHING");
+        toast.success(`VN ${patient.vn} ส่งไป Matching แล้ว (MVP ข้ามการรอ Location)`);
+      }
+      await refreshPackageData();
+    } catch (error) {
+      toast.error(readQueryError(error));
+    }
+  }
+
+  async function runPendingAction(patient: PatientQueueItem) {
+    try {
+      if (patient.stage === "pending" && patient.workflowId) {
+        await returnPackageWorkflowToVerify(patient.workflowId, "Pharmacist");
+        toast.success(`VN ${patient.vn} กลับหน้า Verify แล้ว`);
+      } else if (patient.stage === "verify" && patient.date) {
+        await setPackageWorkflowPending({
+          visitDate: patient.date.slice(0, 10),
+          visitNumber: patient.vn,
+          reasonText: "ส่ง Pending จากคิว Verify",
+          actorName: "Pharmacist",
+        });
+        toast.success(`VN ${patient.vn} ส่งไป Pending แล้ว`);
+      }
+      await refreshPackageData();
+    } catch (error) {
+      toast.error(readQueryError(error));
+    }
   }
 
   const activeItem = workspaceItems.find((item) => item.id === activeScreen) ?? workspaceItems[0];
@@ -254,7 +444,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
 
               <section className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
                 {showVerifyError ? (
-                  <VerifyApiErrorState error={verifyApiError} onRetry={() => void refetchVerify()} />
+                  <VerifyApiErrorState error={verifyApiError ?? packageWorkflowError ?? packagesError} onRetry={() => void Promise.all([refetchVerify(), refreshPackageData()])} />
                 ) : (
                   <>
                     <div className="min-h-0 flex-1 overflow-hidden">
@@ -262,18 +452,18 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         isLoading={isCurrentQueueLoading}
                         patients={visiblePatients}
                         selectedId={selectedPatient?.id}
-                        sentToMatchingPatientIds={sentToMatchingPatientIds}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
+                        onPendingAction={(patient) => void runPendingAction(patient)}
+                        onPrimaryAction={(patient) => void runPrimaryAction(patient)}
                         onSelect={selectQueueItem}
-                        onSendMatching={sendPatientToMatching}
                       />
                       <MobileQueueList
                         patients={visiblePatients}
                         selectedId={selectedPatient?.id}
-                        sentToMatchingPatientIds={sentToMatchingPatientIds}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
+                        onPendingAction={(patient) => void runPendingAction(patient)}
+                        onPrimaryAction={(patient) => void runPrimaryAction(patient)}
                         onSelect={selectQueueItem}
-                        onSendMatching={sendPatientToMatching}
                       />
                     </div>
                     {filteredPatients.length > 0 ? (
@@ -312,8 +502,14 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         {activeScreen === "verify" && selectedPatient && selectedPanel === "matching" ? (
           <MatchingPopup patient={selectedPatient} onClose={closeSelectedItem} />
         ) : null}
-        {activeScreen === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
-          <PatientPanel patient={selectedPatientForPanel} pn={selectedPrescription?.pn} onClose={closeSelectedItem} onVerify={verifySelectedPrescription} />
+        {activeScreen === "verify" && selectedPatient?.stage === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
+          <PatientPanel
+            patient={selectedPatientForPanel}
+            pn={selectedPrescription?.pn}
+            verifyAccess={selectedVerifyAccess}
+            onClose={closeSelectedItem}
+            onVerify={verifySelectedPrescription}
+          />
         ) : null}
       </div>
     </main>

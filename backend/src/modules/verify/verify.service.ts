@@ -234,6 +234,54 @@ export class VerifyService {
     };
   }
 
+  async findVisitPrescriptions(
+    visitDate: string,
+    visitNumber: string,
+  ): Promise<VerifyPrescriptionPatient[]> {
+    const request = this.databaseService.createRequest();
+    request.input('visitDate', sql.Date, visitDate);
+    request.input('visitNumber', sql.VarChar(20), visitNumber);
+    const result = await request.query<VerifyPrescriptionListRow>(`
+      SELECT
+        o.CREATEDATETIME AS PRESCRIPTION_CREATEDATETIME,
+        o.VISITDATETIME,
+        o.VISITNUMBER,
+        o.PRESCRIPTIONNUMBER,
+        o.CLINIC_CODE,
+        dept.LOCALWARDNAME,
+        o.PATIENTID,
+        p.FULLNAME_TH,
+        d.DOCTORCODE,
+        d.LOCALDOCTORNAME,
+        oi.ITEMSEQ,
+        oi.CREATEDATETIME AS ITEM_CREATEDATETIME,
+        oi.MEDICINECODE,
+        m.COMMERCIALNAME,
+        oi.ORDERQTY,
+        oi.ORDERUNITCODE,
+        oi.DOSEMEMO_TH
+      FROM dbo.TBLORX AS o
+      LEFT JOIN dbo.TBLPATIENT AS p
+        ON p.PATIENTID = o.PATIENTID
+      LEFT JOIN dbo.TBLORXITEMS AS oi
+        ON oi.VISITDATETIME = o.VISITDATETIME
+       AND oi.VISITNUMBER = o.VISITNUMBER
+       AND oi.PRESCRIPTIONNUMBER = o.PRESCRIPTIONNUMBER
+      LEFT JOIN dbo.TBLMEDITEMSINFO AS m
+        ON m.MEDICINECODE = oi.MEDICINECODE
+      LEFT JOIN dbo.TBLDOCTOR AS d
+        ON d.DOCTORCODE = o.DOCTORORDERCODE
+      LEFT JOIN dbo.TBLDEPT AS dept
+        ON dept.DEPTCODE = o.CLINIC_CODE
+      WHERE o.VISITDATETIME = @visitDate
+        AND o.VISITNUMBER = @visitNumber
+        AND o.PATIENTID IS NOT NULL
+      ORDER BY o.PATIENTID, o.PRESCRIPTIONNUMBER, oi.ITEMSEQ, oi.MEDICINECODE;
+    `);
+
+    return this.groupPrescriptionRows(result.recordset);
+  }
+
   private validateListFilters(query: GetVerifyPrescriptionsQueryDto): void {
     const hasFromDate = query.fromDate !== undefined;
     const hasToDate = query.toDate !== undefined;

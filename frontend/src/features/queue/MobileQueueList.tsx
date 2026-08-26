@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { LockKeyhole } from "lucide-react";
+import { ArrowLeftRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,17 +19,17 @@ function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) 
 export function MobileQueueList({
   patients,
   selectedId,
-  sentToMatchingPatientIds,
   verifiedPrescriptionIds,
   onSelect,
-  onSendMatching,
+  onPendingAction,
+  onPrimaryAction,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
-  sentToMatchingPatientIds: ReadonlySet<string>;
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
-  onSendMatching: (patientId: string) => void;
+  onPendingAction: (patient: PatientQueueItem) => void;
+  onPrimaryAction: (patient: PatientQueueItem) => void;
 }) {
   const [expandedVn, setExpandedVn] = useState<string | null>(null);
 
@@ -45,8 +45,7 @@ export function MobileQueueList({
         const hasPrescriptions = prescriptions.length > 0;
         const isExpanded = expandedVn === patient.vn;
         const isSelected = selectedId === patient.id;
-        const allPrescriptionsVerified = hasPrescriptions && prescriptions.every((prescription) => verifiedPrescriptionIds.has(prescription.id));
-        const hasSentToMatching = sentToMatchingPatientIds.has(patient.id);
+        const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
         const activateCard = () => hasPrescriptions ? toggleExpanded(patient.vn) : onSelect(patient.id);
 
         return (
@@ -88,25 +87,34 @@ export function MobileQueueList({
                     <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
                   )) : <span className="text-sm font-bold text-slate-300">ไม่มีแจ้งเตือน</span>}
                 </div>
-                <div onClick={(event) => event.stopPropagation()}>
-                  {hasPrescriptions ? (
+                <div className="flex flex-wrap justify-end gap-2" onClick={(event) => event.stopPropagation()}>
+                  {patient.stage === "verify" || patient.stage === "picking" ? (
                     <Button
-                      aria-label={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ยัง Verify VN ไม่ได้ ต้อง Verify PN ทุกใบก่อน"}
+                      aria-label={patient.stage === "picking" ? "ส่ง Matching" : "เปิดรายการยาเพื่อ Verify"}
                       className={cn(
                         "h-9 rounded-xl px-3",
-                        allPrescriptionsVerified
-                          ? "bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-100 disabled:text-blue-700 disabled:opacity-100"
-                          : "border border-slate-300 bg-slate-100 text-slate-400 shadow-none disabled:pointer-events-auto disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100",
+                        "bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100",
                       )}
-                      disabled={!allPrescriptionsVerified || hasSentToMatching}
-                      onClick={() => onSendMatching(patient.id)}
-                      title={hasSentToMatching ? "Verify VN แล้ว" : allPrescriptionsVerified ? "Verify VN" : "ต้อง Verify PN ทุกใบก่อน"}
+                      disabled={patient.stage === "verify" ? !hasPrescriptions : !canSendToMatching}
+                      onClick={() => onPrimaryAction(patient)}
+                      title={patient.stage === "picking" ? "ส่งไป Matching" : "เปิด PN ที่ยังต้องตรวจ"}
                       type="button"
                     >
-                      {!allPrescriptionsVerified ? <LockKeyhole className="h-3.5 w-3.5" /> : null}
-                      {hasSentToMatching ? "Verify แล้ว" : "Verify"}
+                      {patient.stage === "picking" ? "ส่ง Matching" : "เปิดตรวจยา"}
                     </Button>
-                  ) : <span className="text-sm font-bold text-slate-400">{patient.pharmacist ?? "ไม่มี PN"}</span>}
+                  ) : null}
+                  {patient.stage === "verify" || patient.stage === "pending" ? (
+                    <Button
+                      className={patient.stage === "pending" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}
+                      onClick={() => onPendingAction(patient)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      <ArrowLeftRight className="h-3.5 w-3.5" />
+                      {patient.stage === "pending" ? "กลับ Verify" : "ส่ง Pending"}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>

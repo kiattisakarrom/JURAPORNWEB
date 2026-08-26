@@ -7,12 +7,21 @@
   "scripts": {
     "build": "nest build",
     "start": "nest start",
-    "start:dev": "nest start --watch",
+    "start:dev": "DB_PROFILE=local nest start --watch",
+    "start:dev:local": "DB_PROFILE=local nest start --watch",
+    "start:dev:live": "DB_PROFILE=live nest start --watch",
     "start:prod": "node dist/main.js",
+    "start:prod:local": "DB_PROFILE=local node dist/main.js",
+    "start:prod:live": "DB_PROFILE=live node dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\"",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage"
+    "test:cov": "jest --coverage",
+    "db:package:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/001_create_package_workflow_schema.sql",
+    "db:package:live": "DB_PROFILE=live node scripts/run-sql-file.js sql/001_create_package_workflow_schema.sql",
+    "db:package:validate:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/003_validate_package_workflow.sql",
+    "db:package:validate:live": "DB_PROFILE=live node scripts/run-sql-file.js sql/003_validate_package_workflow.sql",
+    "db:workflow:cleanup:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/002_drop_legacy_workflow_schema.sql"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

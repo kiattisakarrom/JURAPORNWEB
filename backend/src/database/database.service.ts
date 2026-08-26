@@ -16,6 +16,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit(): Promise<void> {
+    const profile = this.configService.getOrThrow<string>('DB_PROFILE');
     const config: sql.config = {
       server: this.configService.getOrThrow<string>('DB_HOST'),
       port: this.configService.getOrThrow<number>('DB_PORT'),
@@ -47,7 +48,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
 
     this.pool = await new sql.ConnectionPool(config).connect();
     this.logger.log(
-      `Connected to SQL Server database ${config.database} at ${config.server}:${config.port}`,
+      `Connected to ${profile} SQL Server database ${config.database} at ${config.server}:${config.port}`,
     );
   }
 
@@ -57,6 +58,27 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     }
 
     return this.pool.request();
+  }
+
+  async withTransaction<T>(
+    work: (createRequest: () => sql.Request) => Promise<T>,
+    isolationLevel: number = sql.ISOLATION_LEVEL.READ_COMMITTED,
+  ): Promise<T> {
+    if (!this.pool?.connected) {
+      throw new ServiceUnavailableException('Database is not connected');
+    }
+
+    const transaction = new sql.Transaction(this.pool);
+    await transaction.begin(isolationLevel);
+
+    try {
+      const result = await work(() => new sql.Request(transaction));
+      await transaction.commit();
+      return result;
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
   }
 
   async onApplicationShutdown(): Promise<void> {

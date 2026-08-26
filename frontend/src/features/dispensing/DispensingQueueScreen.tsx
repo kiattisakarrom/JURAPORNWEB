@@ -1,11 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, BellRing, CreditCard, Megaphone, Printer, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getDispensingQueue, type DispensingQueueItem } from "@/lib/workstation-api";
+import type { DispensingQueueItem } from "@/lib/workstation-api";
+import { getPackages, mapPackageToDispensing, updatePackageDispensingStatus } from "@/lib/package-workflow-api";
 import { cn } from "@/lib/utils";
 
 const statusStyles: Record<DispensingQueueItem["status"], string> = {
@@ -18,8 +20,14 @@ const statusStyles: Record<DispensingQueueItem["status"], string> = {
 };
 
 export function DispensingQueueScreen({ search }: { search: string }) {
+  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data = [], isLoading } = useQuery({ queryKey: ["dispensing-queue"], queryFn: getDispensingQueue });
+  const { data: packages = [], isLoading } = useQuery({
+    queryKey: ["dispensing-packages"],
+    queryFn: () => getPackages({ pageNow: "DISPENSING" }),
+    refetchInterval: 10000,
+  });
+  const data = useMemo(() => packages.map(mapPackageToDispensing), [packages]);
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -28,7 +36,23 @@ export function DispensingQueueScreen({ search }: { search: string }) {
 
   const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0];
   const upcoming = data.filter((item) => ["waiting", "ready"].includes(item.status)).slice(0, 4);
-  const calling = data.find((item) => item.status === "dispensing") ?? data[0];
+  const calling = data.find((item) => item.status === "called") ?? data[0];
+
+  async function updatePickupStatus(packageId: string, status: "CALLED_WAITING" | "RECEIVED") {
+    try {
+      await updatePackageDispensingStatus(packageId, status);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
+        queryClient.invalidateQueries({ queryKey: ["packages"] }),
+        queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
+        queryClient.invalidateQueries({ queryKey: ["verify-prescriptions"] }),
+      ]);
+      if (status === "RECEIVED") setSelectedId(null);
+      toast.success(status === "RECEIVED" ? "ยืนยันว่าผู้ป่วยรับยาแล้ว" : "เรียกผู้ป่วยและเปลี่ยนสถานะเป็นรอรับยาแล้ว");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "บันทึกการจ่ายยาไม่สำเร็จ");
+    }
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -161,7 +185,21 @@ export function DispensingQueueScreen({ search }: { search: string }) {
                 <Button variant="outline"><Printer className="h-4 w-4" />พิมพ์ใบ NED / MR</Button>
                 <div className="flex-1" />
                 <Button variant="outline"><Megaphone className="h-4 w-4" />Missed-call</Button>
-                <Button className="bg-cyan-600 hover:bg-cyan-700"><Volume2 className="h-4 w-4" />อัปเดตสถานะคิว</Button>
+                <Button
+                  className="border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  disabled={selected.status === "called"}
+                  onClick={() => void updatePickupStatus(selected.id, "CALLED_WAITING")}
+                  variant="outline"
+                >
+                  <Volume2 className="h-4 w-4" />เรียกผู้ป่วย
+                </Button>
+                <Button
+                  className="bg-cyan-600 hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:opacity-100"
+                  disabled={selected.status !== "called"}
+                  onClick={() => void updatePickupStatus(selected.id, "RECEIVED")}
+                >
+                  <BadgeCheck className="h-4 w-4" />ผู้ป่วยรับยาแล้ว
+                </Button>
               </div>
             </div>
           ) : (
