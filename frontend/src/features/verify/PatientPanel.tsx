@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, ClipboardCheck, FileText, Pill, Printer, RefreshCw, Search, ShieldAlert, Stethoscope, UserRound, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, Pill, Printer, RefreshCw, Search, UserRound, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { getPatientProfile } from "@/lib/patient-profile-api";
 import { getMachineStockCheck } from "@/lib/stock-check-api";
 import { cn } from "@/lib/utils";
-import type { AlertKind, DrugItem, PatientLabResult, PatientProfile, PatientQueueItem } from "@/types/pharmacy";
+import type { DrugItem, PatientLabResult, PatientProfile, PatientQueueItem } from "@/types/pharmacy";
 import {
   medicationErrorCategories,
   medicationErrorSeverities,
@@ -17,17 +17,9 @@ import {
   type MedicationErrorSeverityKey,
 } from "@/features/medication-error/MedicationErrorReportModal";
 import { PatientProfilePopup } from "@/features/patient-profile/PatientProfilePopup";
+import { ClinicalAlertBadges } from "@/features/queue/ClinicalAlertBadges";
 import { stageDotStyles, stageLabel, stageStyles } from "@/features/queue/queue-ui";
 import { MachineStockCheck } from "./MachineStockCheck";
-
-const alertTone: Record<AlertKind, { label: string; className: string }> = {
-  duplicate: { label: "Duplicate", className: "border-violet-200 bg-violet-50 text-violet-700" },
-  interaction: { label: "DI", className: "border-rose-200 bg-rose-50 text-rose-700" },
-  machine: { label: "Machine", className: "border-blue-200 bg-blue-50 text-blue-700" },
-  stock: { label: "Stock", className: "border-amber-200 bg-amber-50 text-amber-700" },
-  paper: { label: "Paper", className: "border-yellow-200 bg-yellow-50 text-yellow-700" },
-  note: { label: "Note", className: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700" },
-};
 
 const hadChecklistItems = [
   { id: "dose", label: "ตรวจสอบขนาดยา (dose) ตามน้ำหนัก/ไต" },
@@ -84,6 +76,7 @@ export function PatientPanel({
   });
 
   const displayProfile = useMemo(() => buildInlineProfile(patient, profile), [patient, profile]);
+  const clinicalAlertSummary = useMemo(() => buildClinicalAlertSummary(patient), [patient]);
   const headerLabs = useMemo(() => buildHeaderLabs(patient.id, displayProfile.labs), [displayProfile.labs, patient.id]);
   const bmi = calculateBmi(displayProfile.weight, displayProfile.height);
   const completedHadCount = hadChecklistItems.filter((item) => hadChecklist[item.id]).length;
@@ -151,12 +144,11 @@ export function PatientPanel({
   }
 
   return createPortal(
-    <div aria-modal="true" className="fixed inset-0 z-50 flex h-dvh overflow-hidden overscroll-none justify-end bg-[#0f1f3d]/35" role="dialog">
-      <button aria-label="ปิดแผงข้อมูลผู้ป่วย" className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
-      <div className="flex h-full w-full justify-end gap-3 p-0 lg:w-auto lg:p-3">
+    <div aria-modal="true" className="fixed inset-0 z-50 flex h-dvh overflow-hidden overscroll-none bg-[#f6f8fb]" role="dialog">
+      <div className="flex h-full min-w-0 w-full">
         {isProfileOpen ? <PatientProfilePopup patient={patient} onClose={() => setIsProfileOpen(false)} /> : null}
 
-        <aside className="flex h-full w-full flex-col overflow-hidden bg-[#f6f8fb] shadow-[-18px_0_50px_rgba(15,31,61,0.22)] sm:max-w-[94vw] lg:w-[760px] lg:rounded-2xl lg:border lg:border-slate-200">
+        <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
           <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
             <div className="flex items-start gap-3 sm:gap-4">
               <Button aria-label="ปิด" className="h-10 w-10 shrink-0 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
@@ -170,6 +162,11 @@ export function PatientPanel({
                     {stageLabel(patient.stage)}
                   </Badge>
                   <Badge className={priorityClassName(patient.priority)}>{patient.priority === "Unspecified" ? "ไม่ระบุ Priority" : patient.priority}</Badge>
+                  <InlineHeaderDetail alert label="แพ้ยา / ADR" value={clinicalAlertSummary} />
+                  <InlineHeaderDetail label="Ward / Clinic" value={displayProfile.ward} />
+                  <InlineHeaderDetail label="Diagnosis" value={displayProfile.diagnosis} />
+                  <InlineHeaderDetail label="แพทย์ผู้ดูแล" value={displayProfile.doctor} />
+                  <InlineHeaderDetail label="Renal / DI" value={`${displayProfile.renal} · ${displayProfile.drugInteraction}`} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
                   <span>VN {displayProfile.vn}</span>
@@ -191,7 +188,7 @@ export function PatientPanel({
               </Button>
             </div>
 
-            <div className="mt-4 overflow-x-auto pb-1">
+            <div className="mt-2 overflow-x-auto pb-1">
               <div className="flex min-w-max items-stretch gap-2">
                 <div className="min-w-[230px] rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 shadow-sm">
                   <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">น้ำหนัก / ส่วนสูง / BMI</div>
@@ -216,24 +213,7 @@ export function PatientPanel({
             ) : (
               <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">ล็อก VN สำหรับการ Verify แล้ว ระบบต่ออายุล็อกทุก 30 วินาที</div>
             )}
-            <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900 shadow-sm">
-              <div className="flex gap-3">
-                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
-                <div>
-                  <div className="text-lg font-black">แพ้ยา / ADR</div>
-                  <p className="mt-1 text-sm font-semibold leading-6 text-rose-800">{displayProfile.allergy}</p>
-                </div>
-              </div>
-            </section>
-
-            <section className="mt-5 grid gap-3 sm:grid-cols-2">
-              <InfoCard icon={<Stethoscope className="h-4 w-4" />} label="Ward / Clinic" value={displayProfile.ward} />
-              <InfoCard icon={<FileText className="h-4 w-4" />} label="Diagnosis" value={displayProfile.diagnosis} />
-              <InfoCard icon={<UserRound className="h-4 w-4" />} label="แพทย์ผู้ดูแล" value={displayProfile.doctor} />
-              <InfoCard label="Renal / DI" value={`${displayProfile.renal} · ${displayProfile.drugInteraction}`} />
-            </section>
-
-            <section className="mt-6">
+            <section>
               <div className="mb-3">
                 <h3 className="text-sm font-black text-slate-500">รายการยา ({patient.drugs.length})</h3>
                 <p className="mt-1 text-xs font-bold text-slate-400">เลือกรายการยาที่พบปัญหาก่อนกดปุ่ม รายงาน ME</p>
@@ -291,12 +271,12 @@ export function PatientPanel({
                               {drug.DOSEMEMO_TH ?? dose.instruction}
                             </p>
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {patient.alerts.length > 0 ? (
-                                patient.alerts.slice(0, 3).map((alert) => (
-                                  <span className={cn("rounded-full border px-2.5 py-1 text-xs font-black", alertTone[alert].className)} key={alert}>
-                                    {alertTone[alert].label}
-                                  </span>
-                                ))
+                              {drug.clinicalAlerts?.length ? (
+                                <ClinicalAlertBadges
+                                  alerts={Array.from(new Set(drug.clinicalAlerts.map((alert) => alert.kind)))}
+                                  clinicalAlerts={drug.clinicalAlerts}
+                                  size="pill"
+                                />
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
                                   <CheckCircle2 className="h-3.5 w-3.5" />
@@ -467,11 +447,31 @@ function buildInlineProfile(patient: PatientQueueItem, profile?: PatientProfile)
     ward: patient.wardName ?? profile?.ward ?? "OPD",
     doctor: patient.doctor ?? profile?.doctor ?? patient.pharmacist ?? "รอข้อมูลแพทย์",
     diagnosis: profile?.diagnosis ?? "รอข้อมูลวินิจฉัย",
-    allergy: profile?.keyHistory.allergy ?? patient.issue?.detail ?? "ไม่มีประวัติแพ้ยา",
+    allergy: profile?.keyHistory.allergy ?? patient.issue?.detail ?? "-",
     renal: profile?.keyHistory.renal ?? "รอข้อมูล",
     drugInteraction: profile?.keyHistory.drugInteraction ?? "รอข้อมูล",
     labs: profile?.labs && profile.labs.length > 0 ? profile.labs : fallbackLabs(patient),
   };
+}
+
+function buildClinicalAlertSummary(patient: PatientQueueItem) {
+  const alertKinds = new Set(
+    [
+      ...(patient.clinicalAlerts ?? []),
+      ...patient.drugs.flatMap((drug) => drug.clinicalAlerts ?? []),
+    ]
+      .map((alert) => alert.kind),
+  );
+
+  if (alertKinds.size === 0) {
+    if (patient.alerts.includes("allergy")) alertKinds.add("allergy");
+    if (patient.alerts.includes("interaction")) alertKinds.add("interaction");
+  }
+
+  return [
+    alertKinds.has("allergy") ? "AI" : null,
+    alertKinds.has("interaction") ? "DI" : null,
+  ].filter(Boolean).join(" · ") || "-";
 }
 
 function fallbackLabs(patient: PatientQueueItem): PatientLabResult[] {
@@ -552,15 +552,20 @@ function LabChip({ lab }: { lab: PatientLabResult }) {
   );
 }
 
-function InfoCard({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
+function InlineHeaderDetail({
+  alert = false,
+  label,
+  value,
+}: {
+  alert?: boolean;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.08em] text-slate-400">
-        {icon}
-        {label}
-      </div>
-      <div className="mt-2 text-sm font-black text-slate-800">{value}</div>
-    </div>
+    <span className="inline-flex min-w-0 items-baseline gap-1 text-xs" title={`${label}: ${value}`}>
+      <span className={cn("shrink-0 font-black", alert ? "text-rose-600" : "text-slate-400")}>{label}:</span>
+      <span className={cn("max-w-[220px] truncate font-bold", alert ? "text-rose-800" : "text-slate-700")}>{value}</span>
+    </span>
   );
 }
 

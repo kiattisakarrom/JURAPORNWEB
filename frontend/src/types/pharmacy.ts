@@ -11,7 +11,33 @@ export type QueueStage =
 
 export type Priority = "Stat" | "Re-work" | "New" | "Unspecified";
 
-export type AlertKind = "duplicate" | "interaction" | "machine" | "stock" | "paper" | "note";
+export type AlertKind = "duplicate" | "interaction" | "allergy" | "machine" | "stock" | "paper" | "note";
+
+export type DrugInteractionClinicalAlert = {
+  kind: "interaction";
+  medicineCode: string;
+  stockCode: string;
+  stockNameEn: string | null;
+  withStockCode: string;
+  withStockCodeNameEn: string | null;
+  severityType: number | null;
+  severityTypeName: string | null;
+  levelTypeName: string | null;
+  effectsMemo: string | null;
+  managementMemo: string | null;
+};
+
+export type AllergyClinicalAlert = {
+  kind: "allergy";
+  medicineCode: string;
+  sideEffect: string | null;
+  allergyType: string | null;
+  severity: string | null;
+  reaction: string | null;
+  remarks: string | null;
+};
+
+export type ClinicalAlert = DrugInteractionClinicalAlert | AllergyClinicalAlert;
 
 export type DrugItem = {
   id: string;
@@ -25,6 +51,7 @@ export type DrugItem = {
   createdAt?: string | null;
   orderQuantity?: number | null;
   orderUnitCode?: string | null;
+  clinicalAlerts?: ClinicalAlert[];
   workflowStatus?: string;
   packageId?: string;
   packagePriority?: "NORMAL" | "URGENT";
@@ -36,9 +63,10 @@ export type PatientPrescription = {
   id: string;
   pn: string;
   date?: string;
-  stage: "verify";
+  stage: Exclude<QueueStage, "all">;
   time: string;
   alerts: AlertKind[];
+  clinicalAlerts?: ClinicalAlert[];
   drugs: DrugItem[];
   createdAt?: string | null;
   clinicCode?: string | null;
@@ -65,6 +93,7 @@ export type PatientQueueItem = {
   time: string;
   durationMinutes?: number;
   alerts: AlertKind[];
+  clinicalAlerts?: ClinicalAlert[];
   drugs: DrugItem[];
   prescriptions?: PatientPrescription[];
   doctor?: string;
@@ -210,6 +239,7 @@ export type DispensingImageSlot = {
 
 export type DispensingCheckoutResponse = {
   patientId: string;
+  prescriptionNumber: string | null;
   basketScanPlaceholder: string;
   totalItems: number;
   queueStatus: string;

@@ -1,5 +1,6 @@
-import type { PatientPrescription, PatientQueueItem, DrugItem } from "@/types/pharmacy";
+import type { AlertKind, ClinicalAlert, PatientPrescription, PatientQueueItem, DrugItem } from "@/types/pharmacy";
 import type {
+  VerifyClinicalAlertApi,
   VerifyPrescriptionApiItem,
   VerifyPrescriptionApiPatient,
   VerifyPrescriptionApiPrescription,
@@ -40,6 +41,8 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
     const firstPrescription = prescriptions[0];
     const latestCreatedAt = findLatestCreatedAt(prescriptions);
     const mappedPrescriptions = prescriptions.map((prescription) => mapPrescription(patient.PATIENTID, prescription));
+    const drugs = mappedPrescriptions.flatMap((prescription) => prescription.drugs);
+    const clinicalAlerts = dedupeClinicalAlerts(drugs.flatMap((drug) => drug.clinicalAlerts ?? []));
     const doctors = prescriptions
       .map((prescription) => prescription.DOCTOR.LOCALDOCTORNAME)
       .filter((doctor): doctor is string => Boolean(doctor));
@@ -55,8 +58,9 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
       medicationCount: mappedPrescriptions.reduce((total, prescription) => total + prescription.drugs.length, 0),
       time: formatTime(latestCreatedAt),
       durationMinutes: undefined,
-      alerts: [],
-      drugs: mappedPrescriptions.flatMap((prescription) => prescription.drugs),
+      alerts: mapAlertKinds(clinicalAlerts),
+      clinicalAlerts,
+      drugs,
       prescriptions: mappedPrescriptions,
       doctor: Array.from(new Set(doctors)).join(", ") || undefined,
       doctorCode: firstPrescription.DOCTOR.DOCTORCODE,
@@ -69,14 +73,18 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
 }
 
 function mapPrescription(patientId: string, prescription: VerifyPrescriptionApiPrescription): PatientPrescription {
+  const drugs = prescription.ITEMS.map((item) => mapDrug(patientId, prescription, item));
+  const clinicalAlerts = dedupeClinicalAlerts(drugs.flatMap((drug) => drug.clinicalAlerts ?? []));
+
   return {
     id: createPrescriptionId(patientId, prescription),
     pn: prescription.PRESCRIPTIONNUMBER,
     date: prescription.VISITDATETIME,
     stage: "verify",
     time: formatTime(prescription.CREATEDATETIME),
-    alerts: [],
-    drugs: prescription.ITEMS.map((item) => mapDrug(patientId, prescription, item)),
+    alerts: mapAlertKinds(clinicalAlerts),
+    clinicalAlerts,
+    drugs,
     createdAt: prescription.CREATEDATETIME,
     clinicCode: prescription.CLINIC_CODE,
     wardName: prescription.LOCALWARDNAME,
@@ -113,7 +121,61 @@ function mapDrug(
     createdAt: item.CREATEDATETIME,
     orderQuantity: item.ORDERQTY,
     orderUnitCode: item.ORDERUNITCODE,
+    clinicalAlerts: mapClinicalAlerts(item.ALERTS ?? [], item.MEDICINECODE),
   };
+}
+
+function mapClinicalAlerts(alerts: VerifyClinicalAlertApi[], medicineCode: string): ClinicalAlert[] {
+  return dedupeClinicalAlerts(alerts.map((alert): ClinicalAlert => {
+    if (alert.TYPE === "DI") {
+      return {
+        kind: "interaction",
+        medicineCode,
+        stockCode: alert.STOCK_CODE,
+        stockNameEn: alert.STOCK_NAME_EN,
+        withStockCode: alert.WITH_STOCK_CODE,
+        withStockCodeNameEn: alert.WITH_STOCK_CODE_NAME_EN,
+        severityType: alert.SEVERITY_TYPE,
+        severityTypeName: alert.SEVERITY_TYPE_NAME,
+        levelTypeName: alert.LEVEL_TYPE_NAME,
+        effectsMemo: alert.EFFECTS_MEMO,
+        managementMemo: alert.MANAGEMENT_MEMO,
+      };
+    }
+
+    return {
+      kind: "allergy",
+      medicineCode,
+      sideEffect: alert.SIDE_EFFECT,
+      allergyType: alert.ALLERGY_TYPE,
+      severity: alert.SEVERITY,
+      reaction: alert.REACTION,
+      remarks: alert.REMARKS,
+    };
+  }));
+}
+
+function mapAlertKinds(alerts: ClinicalAlert[]): AlertKind[] {
+  return Array.from(new Set(alerts.map((alert) => alert.kind)));
+}
+
+function dedupeClinicalAlerts(alerts: ClinicalAlert[]): ClinicalAlert[] {
+  const uniqueAlerts = new Map<string, ClinicalAlert>();
+  alerts.forEach((alert) => {
+    const key = alert.kind === "interaction"
+      ? JSON.stringify({
+          kind: alert.kind,
+          pair: [alert.stockCode, alert.withStockCode].sort(),
+          severityType: alert.severityType,
+          severityTypeName: alert.severityTypeName,
+          levelTypeName: alert.levelTypeName,
+          effectsMemo: alert.effectsMemo,
+          managementMemo: alert.managementMemo,
+        })
+      : JSON.stringify(alert);
+    if (!uniqueAlerts.has(key)) uniqueAlerts.set(key, alert);
+  });
+  return Array.from(uniqueAlerts.values());
 }
 
 function createVisitId(patientId: string, visitDate: string, visitNumber: string) {

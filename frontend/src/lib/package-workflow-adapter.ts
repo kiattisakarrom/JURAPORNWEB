@@ -1,5 +1,5 @@
 import type { MedicationPackage, PackageWorkflow } from "@/lib/package-workflow-api";
-import type { DrugItem, PatientQueueItem, QueueStage } from "@/types/pharmacy";
+import type { DrugItem, PatientPrescription, PatientQueueItem, QueueStage } from "@/types/pharmacy";
 
 export function mergeVerifyQueueWithPackageWorkflow(
   sourcePatients: PatientQueueItem[],
@@ -109,23 +109,42 @@ function mapPendingWorkflowToQueue(workflow: PackageWorkflow): PatientQueueItem 
 }
 
 function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
-  const drugs: DrugItem[] = itemPackage.ITEMS.map((item) => ({
-    id: item.PACKAGE_ITEM_ID,
-    name: item.COMMERCIALNAME?.trim() || item.MEDICINECODE,
-    sig: item.DOSEMEMO_TH?.trim() || "ไม่มีข้อมูลคำอธิบายวิธีใช้ยา",
-    MEDICINECODE: item.MEDICINECODE,
-    DOSEMEMO_TH: item.DOSEMEMO_TH ?? undefined,
-    source: "—",
-    machineCode: "—",
-    itemSequence: item.ITEMSEQ,
-    orderQuantity: item.ORDERQTY,
-    orderUnitCode: item.ORDERUNITCODE,
-    workflowStatus: itemPackage.PAGE_NOW,
-    packageId: itemPackage.PACKAGE_ID,
-    packagePriority: itemPackage.PACKAGE_PRIORITY,
-    dispensingPickupStatus: itemPackage.DISPENSING_PICKUP_STATUS,
-    isPackageLocked: itemPackage.IS_ACTIVE,
+  const stage = mapPackagePage(itemPackage.PAGE_NOW);
+  const drugsByPrescription = new Map<string, DrugItem[]>();
+
+  itemPackage.ITEMS.forEach((item) => {
+    const prescriptionNumber = item.PRESCRIPTIONNUMBER?.trim() || "—";
+    const drugs = drugsByPrescription.get(prescriptionNumber) ?? [];
+    drugs.push({
+      id: item.PACKAGE_ITEM_ID,
+      name: item.COMMERCIALNAME?.trim() || item.MEDICINECODE,
+      sig: item.DOSEMEMO_TH?.trim() || "ไม่มีข้อมูลคำอธิบายวิธีใช้ยา",
+      MEDICINECODE: item.MEDICINECODE,
+      DOSEMEMO_TH: item.DOSEMEMO_TH ?? undefined,
+      source: "—",
+      machineCode: "—",
+      itemSequence: item.ITEMSEQ,
+      orderQuantity: item.ORDERQTY,
+      orderUnitCode: item.ORDERUNITCODE,
+      workflowStatus: itemPackage.PAGE_NOW,
+      packageId: itemPackage.PACKAGE_ID,
+      packagePriority: itemPackage.PACKAGE_PRIORITY,
+      dispensingPickupStatus: itemPackage.DISPENSING_PICKUP_STATUS,
+      isPackageLocked: itemPackage.IS_ACTIVE,
+    });
+    drugsByPrescription.set(prescriptionNumber, drugs);
+  });
+
+  const prescriptions: PatientPrescription[] = Array.from(drugsByPrescription, ([pn, prescriptionDrugs]) => ({
+    id: createPackagePrescriptionId(itemPackage.PACKAGE_ID, pn),
+    pn,
+    date: normalizeDate(itemPackage.VISITDATETIME),
+    stage,
+    time: formatTime(itemPackage.UPDATED_AT),
+    alerts: [],
+    drugs: prescriptionDrugs,
   }));
+  const drugs = prescriptions.flatMap((prescription) => prescription.drugs);
 
   return {
     id: `package:${itemPackage.PACKAGE_ID}`,
@@ -134,11 +153,12 @@ function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
     name: itemPackage.PATIENT_NAME?.trim() || "ไม่พบชื่อผู้ป่วย",
     priority: itemPackage.PACKAGE_PRIORITY === "URGENT" ? "Stat" : "New",
     date: normalizeDate(itemPackage.VISITDATETIME),
-    stage: mapPackagePage(itemPackage.PAGE_NOW),
+    stage,
     medicationCount: drugs.length,
     time: formatTime(itemPackage.UPDATED_AT),
     alerts: [],
     drugs,
+    prescriptions,
     dataSource: "package-api",
     workflowId: itemPackage.WORKFLOW_ID,
     workflowCaseStatus: itemPackage.PACKAGE_STATUS,
@@ -147,6 +167,10 @@ function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
     packagePriority: itemPackage.PACKAGE_PRIORITY,
     workflowAllowedActions: itemPackage.ALLOWED_ACTIONS,
   };
+}
+
+function createPackagePrescriptionId(packageId: string, prescriptionNumber: string) {
+  return ["package-prescription", packageId, prescriptionNumber].map(encodeURIComponent).join(":");
 }
 
 function mapPackagePage(page: MedicationPackage["PAGE_NOW"]): Exclude<QueueStage, "all"> {

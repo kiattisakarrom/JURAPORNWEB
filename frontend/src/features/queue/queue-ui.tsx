@@ -1,9 +1,10 @@
-import { AlertTriangle, CheckCircle2, PackageCheck, Pill, Siren, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, PackageCheck, Siren, Sparkles } from "lucide-react";
 import type { AlertKind, PatientQueueItem, Priority } from "@/types/pharmacy";
 
 export const alertStyles: Record<AlertKind, string> = {
   duplicate: "bg-[#fdeaea] text-[#d83a3a]",
-  interaction: "bg-[#e7efff] text-[#2f6bf3]",
+  interaction: "border border-blue-300 bg-blue-50 text-blue-700",
+  allergy: "border border-red-300 bg-red-50 text-red-700",
   machine: "bg-[#fff2e1] text-[#e07d12]",
   stock: "bg-[#fce7f3] text-[#be185d]",
   paper: "bg-[#fff5db] text-[#bd8208]",
@@ -53,7 +54,8 @@ export function durationClass(minutes?: number) {
 
 export function alertIcon(kind: AlertKind) {
   if (kind === "duplicate") return <Siren className="h-4 w-4" />;
-  if (kind === "interaction") return <Pill className="h-4 w-4" />;
+  if (kind === "interaction") return <span className="text-[11px] font-black">DI</span>;
+  if (kind === "allergy") return <span className="text-[11px] font-black">AI</span>;
   if (kind === "machine") return <AlertTriangle className="h-4 w-4" />;
   if (kind === "stock") return <PackageCheck className="h-4 w-4" />;
   if (kind === "paper") return <CheckCircle2 className="h-4 w-4" />;

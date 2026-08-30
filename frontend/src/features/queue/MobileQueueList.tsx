@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PatientQueueItem } from "@/types/pharmacy";
-import { alertIcon, alertStyles, durationClass, priorityStyles, stageLabel, stageStyles } from "./queue-ui";
+import { ClinicalAlertBadges } from "./ClinicalAlertBadges";
+import { durationClass, priorityStyles, stageLabel, stageStyles } from "./queue-ui";
 import { VerifyStatusCheckbox } from "./VerifyStatusCheckbox";
 
 function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) {
@@ -19,6 +20,7 @@ function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) 
 export function MobileQueueList({
   patients,
   selectedId,
+  selectedPrescriptionId,
   verifiedPrescriptionIds,
   onSelect,
   onPendingAction,
@@ -26,15 +28,16 @@ export function MobileQueueList({
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
+  selectedPrescriptionId?: string;
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
   onPrimaryAction: (patient: PatientQueueItem) => void;
 }) {
-  const [expandedVn, setExpandedVn] = useState<string | null>(null);
+  const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
 
-  function toggleExpanded(vn: string) {
-    setExpandedVn((current) => current === vn ? null : vn);
+  function toggleExpanded(patientId: string) {
+    setExpandedPatientId((current) => current === patientId ? null : patientId);
   }
 
   return (
@@ -43,10 +46,10 @@ export function MobileQueueList({
       {patients.map((patient) => {
         const prescriptions = patient.prescriptions ?? [];
         const hasPrescriptions = prescriptions.length > 0;
-        const isExpanded = expandedVn === patient.vn;
+        const isExpanded = expandedPatientId === patient.id;
         const isSelected = selectedId === patient.id;
         const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
-        const activateCard = () => hasPrescriptions ? toggleExpanded(patient.vn) : onSelect(patient.id);
+        const activateCard = () => hasPrescriptions ? toggleExpanded(patient.id) : onSelect(patient.id);
 
         return (
           <article className={cn("overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm", (isSelected || isExpanded) && "border-blue-300 bg-blue-50")} key={patient.id}>
@@ -82,11 +85,11 @@ export function MobileQueueList({
               </div>
 
               <div className="mt-4 flex items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-2">
-                  {patient.alerts.length ? patient.alerts.map((alert) => (
-                    <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
-                  )) : <span className="text-sm font-bold text-slate-300">ไม่มีแจ้งเตือน</span>}
-                </div>
+                <ClinicalAlertBadges
+                  alerts={patient.alerts}
+                  clinicalAlerts={patient.clinicalAlerts}
+                  emptyLabel="ไม่มีแจ้งเตือน"
+                />
                 <div className="flex flex-wrap justify-end gap-2" onClick={(event) => event.stopPropagation()}>
                   {patient.stage === "verify" || patient.stage === "picking" ? (
                     <Button
@@ -129,7 +132,7 @@ export function MobileQueueList({
                     <div
                       className={cn(
                         "cursor-pointer rounded-xl border border-blue-100 bg-white p-3 transition hover:border-blue-300 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500",
-                        isSelected && "border-blue-300 bg-blue-50",
+                        selectedPrescriptionId === prescription.id && "border-blue-300 bg-blue-50",
                       )}
                       key={prescription.id}
                       onClick={selectRow}
@@ -148,21 +151,25 @@ export function MobileQueueList({
                       </div>
 
                       <div className="mt-3 flex items-end justify-between gap-3">
-                        <div className="flex flex-wrap gap-2">
-                          {prescription.alerts.length ? prescription.alerts.map((alert) => (
-                            <span className={cn("flex h-8 w-8 items-center justify-center rounded-xl", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
-                          )) : <span className="text-xs font-bold text-slate-300">ไม่มีแจ้งเตือน</span>}
-                        </div>
+                        <ClinicalAlertBadges
+                          alerts={prescription.alerts}
+                          clinicalAlerts={prescription.clinicalAlerts}
+                          emptyLabel="ไม่มีแจ้งเตือน"
+                        />
                         <div className="text-right text-xs font-bold text-slate-500">
                           <div>{prescription.doctor ?? patient.doctor ?? "รอข้อมูลแพทย์"}</div>
                           <div className={cn("mt-1", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)} · {priorityLabel(patient.priority)}</div>
-                          <span className="mt-2 inline-flex items-center gap-1.5 text-blue-700">
-                            เช็ก
-                            <VerifyStatusCheckbox
-                              checked={verifiedPrescriptionIds.has(prescription.id)}
-                              label={`สถานะ Verify PN ${prescription.pn}`}
-                            />
-                          </span>
+                          {prescription.stage === "verify" ? (
+                            <span className="mt-2 inline-flex items-center gap-1.5 text-blue-700">
+                              เช็ก
+                              <VerifyStatusCheckbox
+                                checked={verifiedPrescriptionIds.has(prescription.id)}
+                                label={`สถานะ Verify PN ${prescription.pn}`}
+                              />
+                            </span>
+                          ) : (
+                            <span className="mt-2 block text-slate-400">{stageLabel(prescription.stage)}</span>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -6,7 +6,7 @@ API ชุดแรกเป็นแบบอ่านข้อมูลอย�
 
 ## Verify prescription list
 
-ดึงข้อมูล Verify โดยจัดกลุ่ม `PATIENT → PRESCRIPTIONS → ITEMS` การแบ่งหน้าจะนับตามจำนวนผู้ป่วย เพื่อให้ผู้ป่วยที่อยู่ในหน้าปัจจุบันได้รับใบสั่งยาและรายการยาครบใน Response เดียว
+ดึงข้อมูล Verify โดยจัดกลุ่ม `PATIENT → PRESCRIPTIONS → ITEMS` แต่แบ่งหน้าตาม visit โดยใช้ `PATIENTID + VISITDATETIME + VISITNUMBER` เพื่อให้หนึ่ง VN และทุก PN ภายใน VN อยู่ในหน้าเดียวกัน
 
 ```http
 GET /verify/prescriptions?patientId={PATIENTID}&visitNumber={VISITNUMBER}&fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&page=1&limit=20
@@ -20,8 +20,8 @@ Query parameters:
 | `visitNumber` | Conditional | กรองแบบตรงกันทั้งหมดด้วย `TBLORX.VISITNUMBER` ความยาวไม่เกิน 10 ตัวอักษร |
 | `fromDate` | Conditional | วันเริ่มต้นของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `toDate` |
 | `toDate` | Conditional | วันสิ้นสุดของ `TBLORX.CREATEDATETIME` รูปแบบ `YYYY-MM-DD` และต้องส่งพร้อม `fromDate` |
-| `page` | No | หน้าของรายชื่อผู้ป่วย ค่าเริ่มต้น 1 |
-| `limit` | No | จำนวนผู้ป่วยต่อหน้า 1–100 ค่าเริ่มต้น 20 |
+| `page` | No | หน้าของรายการ visit ค่าเริ่มต้น 1 |
+| `limit` | No | จำนวน VN ต่อหน้า 1–100 ค่าเริ่มต้น 20 |
 
 ต้องส่ง `patientId`, `visitNumber` หรือช่วงวันที่อย่างน้อยหนึ่งรูปแบบ หากส่งหลายตัวกรอง ระบบจะใช้เงื่อนไขร่วมกันแบบ `AND`
 
@@ -39,6 +39,7 @@ Response `200 OK`:
     "PAGE": 1,
     "LIMIT": 20,
     "TOTAL_PATIENTS": 1,
+    "TOTAL_VISITS": 1,
     "TOTAL_PAGES": 1
   },
   "PATIENTS": [
@@ -65,7 +66,29 @@ Response `200 OK`:
               "COMMERCIALNAME": "{COMMERCIALNAME}",
               "ORDERQTY": 1,
               "ORDERUNITCODE": "{ORDERUNITCODE}",
-              "DOSEMEMO_TH": "{DOSEMEMO_TH}"
+              "DOSEMEMO_TH": "{DOSEMEMO_TH}",
+              "ALERTS": [
+                {
+                  "TYPE": "DI",
+                  "STOCK_CODE": "1200000001",
+                  "STOCK_NAME_EN": "Medicine A",
+                  "WITH_STOCK_CODE": "1400000002",
+                  "WITH_STOCK_CODE_NAME_EN": "Medicine B",
+                  "SEVERITY_TYPE": 1,
+                  "SEVERITY_TYPE_NAME": "Major",
+                  "LEVEL_TYPE_NAME": "Established",
+                  "EFFECTS_MEMO": "{EFFECTS_MEMO}",
+                  "MANAGEMENT_MEMO": "{MANAGEMENT_MEMO}"
+                },
+                {
+                  "TYPE": "AI",
+                  "SIDE_EFFECT": "{SIDE_EFFECT}",
+                  "ALLERGY_TYPE": "{ALLERGY_TYPE}",
+                  "SEVERITY": "{SEVERITY}",
+                  "REACTION": "{REACTION}",
+                  "REMARKS": "{REMARKS}"
+                }
+              ]
             }
           ]
         }
@@ -136,7 +159,8 @@ Response `200 OK`:
       "COMMERCIALNAME": "{COMMERCIALNAME}",
       "ORDERQTY": 1,
       "ORDERUNITCODE": "{ORDERUNITCODE}",
-      "DOSEMEMO_TH": "{DOSEMEMO_TH}"
+      "DOSEMEMO_TH": "{DOSEMEMO_TH}",
+      "ALERTS": []
     }
   ]
 }
@@ -152,8 +176,22 @@ TBLORX
   └─ TBLPATIENT        PATIENTID
 
 TBLORXITEMS
-  └─ TBLMEDITEMSINFO   MEDICINECODE
+  ├─ TBLMEDITEMSINFO   MEDICINECODE
+  ├─ DrugInteraction   MEDICINECODE จับคู่กับ StockCode + WithStockCode ภายใน visit
+  └─ TBLALLERGY        PATIENTID = HN และ MEDICINECODE
 ```
+
+### Clinical alerts ใน Verify
+
+`ITEMS[].ALERTS` เป็นคำเตือนแบบ read-only และไม่บล็อกขั้นตอน Verify:
+
+- `DI` ตรวจยาทุก PN ภายใน visit เดียวกัน โดยยึด `VISITDATETIME + VISITNUMBER + PATIENTID`
+- คู่ DI ต้องมีรายการยาสองรายการที่แตกต่างกัน และตรงกับ `DrugInteraction.StockCode` กับ `WithStockCode`
+- ทั้งสองรหัสของคู่ DI ต้องเป็นตัวเลข 10 หลักและขึ้นต้นด้วย `12` หรือ `14`
+- `STOCK_NAME_EN` มาจาก `DrugInteraction.EnglishName` และ `WITH_STOCK_CODE_NAME_EN` มาจาก `WithStockCodeNameEN`
+- `SEVERITY_TYPE` ใช้กำหนดสีข้อความใน Frontend: `1` แดง, `2` ส้ม, `3` เขียว และค่าอื่นเป็นสีเทา
+- `AI` ต้องตรงกันทั้ง `TBLALLERGY.HN = PATIENTID` และ `TBLALLERGY.MEDICINECODE = ITEMS[].MEDICINECODE`
+- หากไม่พบคำเตือน API จะคืน `ALERTS: []`
 
 ## Patient with vital signs
 
@@ -202,6 +240,11 @@ TBLPATIENT.PATIENTID = VitalSign.PATIENTID
 
 API กลุ่มนี้จัดการสถานะตั้งแต่ Verify ถึง Dispensing โดยไม่แก้ข้อมูลใน
 `TBLORX`, `TBLORXITEMS` หรือ `TBLORXITEMS_HISTORY`
+
+เมื่อโปรไฟล์ฐานข้อมูลกำหนด `PACKAGE_WORKFLOW_ENABLED=false` เพราะยังไม่มีตาราง
+Workflow, `GET /package-workflows` และ `GET /packages` จะตอบ `[]` ส่วน endpoint
+รายละเอียดและคำสั่งเปลี่ยนสถานะจะตอบ `503 Service Unavailable` โดย API Verify
+และ Patient ไม่ได้รับผลกระทบ
 
 ### Queue และ Package
 

@@ -29,6 +29,10 @@ class EnvironmentVariables {
   @IsIn(['local', 'live'])
   DB_PROFILE = 'local';
 
+  @Transform(toBoolean)
+  @IsBoolean()
+  PACKAGE_WORKFLOW_ENABLED = true;
+
   @Type(() => Number)
   @IsInt()
   @Min(1)

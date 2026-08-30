@@ -7,7 +7,9 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ActorDto,
   CheckingPackagePairDto,
@@ -31,12 +33,16 @@ import { PackageWorkflowService } from './package-workflow.service';
 
 @Controller()
 export class PackageWorkflowController {
-  constructor(private readonly service: PackageWorkflowService) {}
+  constructor(
+    private readonly service: PackageWorkflowService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Get('package-workflows')
   findWorkflows(
     @Query() query: PackageWorkflowsQueryDto,
   ): Promise<PackageWorkflowResponse[]> {
+    if (!this.isEnabled()) return Promise.resolve([]);
     return this.service.findWorkflows(query);
   }
 
@@ -44,6 +50,7 @@ export class PackageWorkflowController {
   findWorkflow(
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.findWorkflow(workflowId);
   }
 
@@ -51,6 +58,7 @@ export class PackageWorkflowController {
   claimVerifyLock(
     @Body() body: ClaimVerifyLockDto,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.claimVerifyLock(body);
   }
 
@@ -59,6 +67,7 @@ export class PackageWorkflowController {
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
     @Body() body: VerifyLockDto,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.heartbeatVerifyLock(workflowId, body);
   }
 
@@ -67,6 +76,7 @@ export class PackageWorkflowController {
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
     @Body() body: VerifyLockDto,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.releaseVerifyLock(workflowId, body);
   }
 
@@ -75,6 +85,7 @@ export class PackageWorkflowController {
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
     @Body() body: VerifyPackageDto,
   ): Promise<VerifyPackageResponse> {
+    this.assertEnabled();
     return this.service.verifyPrescription(workflowId, body);
   }
 
@@ -82,6 +93,7 @@ export class PackageWorkflowController {
   setPending(
     @Body() body: SetPackagePendingDto,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.setPending(body);
   }
 
@@ -90,11 +102,13 @@ export class PackageWorkflowController {
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
     @Body() body: ActorDto,
   ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
     return this.service.returnToVerify(workflowId, body.actorName);
   }
 
   @Get('packages')
   findPackages(@Query() query: PackagesQueryDto): Promise<PackageResponse[]> {
+    if (!this.isEnabled()) return Promise.resolve([]);
     return this.service.findPackages(query);
   }
 
@@ -102,6 +116,7 @@ export class PackageWorkflowController {
   findPackage(
     @Param('packageId', new ParseUUIDPipe()) packageId: string,
   ): Promise<PackageResponse> {
+    this.assertEnabled();
     return this.service.findPackage(packageId);
   }
 
@@ -110,6 +125,7 @@ export class PackageWorkflowController {
     @Param('packageId', new ParseUUIDPipe()) packageId: string,
     @Body() body: PackageTransitionDto,
   ): Promise<PackageResponse> {
+    this.assertEnabled();
     return this.service.transitionPackage(packageId, body);
   }
 
@@ -118,6 +134,7 @@ export class PackageWorkflowController {
     @Param('packageId', new ParseUUIDPipe()) packageId: string,
     @Body() body: MatchingPackageScanDto,
   ): Promise<PackageResponse> {
+    this.assertEnabled();
     return this.service.scanMatchingMedicine(packageId, body);
   }
 
@@ -126,6 +143,7 @@ export class PackageWorkflowController {
     @Param('packageId', new ParseUUIDPipe()) packageId: string,
     @Body() body: CheckingPackagePairDto,
   ): Promise<CheckingPairResponse> {
+    this.assertEnabled();
     return this.service.validateCheckingPair(packageId, body);
   }
 
@@ -134,7 +152,19 @@ export class PackageWorkflowController {
     @Param('packageId', new ParseUUIDPipe()) packageId: string,
     @Body() body: DispensingStatusDto,
   ): Promise<PackageResponse> {
+    this.assertEnabled();
     return this.service.updateDispensingStatus(packageId, body);
   }
-}
 
+  private isEnabled(): boolean {
+    return this.configService.getOrThrow<boolean>('PACKAGE_WORKFLOW_ENABLED');
+  }
+
+  private assertEnabled(): void {
+    if (!this.isEnabled()) {
+      throw new ServiceUnavailableException(
+        'Package workflow is disabled for the selected database profile',
+      );
+    }
+  }
+}

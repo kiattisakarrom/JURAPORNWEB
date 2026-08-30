@@ -2,7 +2,6 @@ import { apiGet } from "@/lib/api-client";
 import { mapVerifyPatientsToQueue, type VerifyQueueData } from "@/lib/verify-prescriptions-adapter";
 
 export const VERIFY_VISITS_PER_PAGE = 50;
-const VERIFY_API_BATCH_LIMIT = 100;
 const VERIFY_API_CONCURRENCY = 4;
 
 export type VerifyPrescriptionsFilters = {
@@ -22,7 +21,32 @@ export type VerifyPrescriptionApiItem = {
   ORDERQTY: number | null;
   ORDERUNITCODE: string | null;
   DOSEMEMO_TH: string | null;
+  ALERTS?: VerifyClinicalAlertApi[];
 };
+
+export type VerifyDrugInteractionAlertApi = {
+  TYPE: "DI";
+  STOCK_CODE: string;
+  STOCK_NAME_EN: string | null;
+  WITH_STOCK_CODE: string;
+  WITH_STOCK_CODE_NAME_EN: string | null;
+  SEVERITY_TYPE: number | null;
+  SEVERITY_TYPE_NAME: string | null;
+  LEVEL_TYPE_NAME: string | null;
+  EFFECTS_MEMO: string | null;
+  MANAGEMENT_MEMO: string | null;
+};
+
+export type VerifyAllergyAlertApi = {
+  TYPE: "AI";
+  SIDE_EFFECT: string | null;
+  ALLERGY_TYPE: string | null;
+  SEVERITY: string | null;
+  REACTION: string | null;
+  REMARKS: string | null;
+};
+
+export type VerifyClinicalAlertApi = VerifyDrugInteractionAlertApi | VerifyAllergyAlertApi;
 
 export type VerifyPrescriptionApiDoctor = {
   DOCTORCODE: string | null;
@@ -57,6 +81,7 @@ export type VerifyPrescriptionsApiResponse = {
     PAGE: number;
     LIMIT: number;
     TOTAL_PATIENTS: number;
+    TOTAL_VISITS: number;
     TOTAL_PAGES: number;
   };
   PATIENTS: VerifyPrescriptionApiPatient[];
@@ -84,17 +109,24 @@ export async function getVerifyPrescriptions(
   return response;
 }
 
-export async function getVerifyPrescriptionQueue(
+export async function getVerifyPrescriptionQueueFirstPage(
   filters: Omit<VerifyPrescriptionsFilters, "page" | "limit">,
   signal?: AbortSignal,
-): Promise<VerifyQueueData> {
-  const firstPage = await getVerifyPrescriptions({
+): Promise<VerifyPrescriptionsApiResponse> {
+  return getVerifyPrescriptions({
     ...filters,
     page: 1,
-    limit: VERIFY_API_BATCH_LIMIT,
+    limit: VERIFY_VISITS_PER_PAGE,
   }, signal);
+}
+
+export async function getVerifyPrescriptionBackgroundPages(
+  filters: Omit<VerifyPrescriptionsFilters, "page" | "limit">,
+  totalPages: number,
+  signal?: AbortSignal,
+): Promise<VerifyPrescriptionsApiResponse[]> {
   const pageNumbers = Array.from(
-    { length: Math.max(0, firstPage.PAGINATION.TOTAL_PAGES - 1) },
+    { length: Math.max(0, totalPages - 1) },
     (_, index) => index + 2,
   );
   const remainingPages: VerifyPrescriptionsApiResponse[] = [];
@@ -104,13 +136,25 @@ export async function getVerifyPrescriptionQueue(
     const responses = await Promise.all(chunk.map((page) => getVerifyPrescriptions({
       ...filters,
       page,
-      limit: VERIFY_API_BATCH_LIMIT,
+      limit: VERIFY_VISITS_PER_PAGE,
     }, signal)));
     remainingPages.push(...responses);
   }
 
-  const patients = mergePatients([firstPage, ...remainingPages]);
-  return mapVerifyPatientsToQueue(patients, firstPage.PAGINATION.TOTAL_PATIENTS);
+  return remainingPages;
+}
+
+export function buildVerifyPrescriptionQueue(
+  responses: VerifyPrescriptionsApiResponse[],
+): VerifyQueueData | undefined {
+  const firstPage = responses[0];
+  if (!firstPage) return undefined;
+
+  const patients = mergePatients(responses);
+  return {
+    ...mapVerifyPatientsToQueue(patients, firstPage.PAGINATION.TOTAL_PATIENTS),
+    totalVisits: firstPage.PAGINATION.TOTAL_VISITS,
+  };
 }
 
 function mergePatients(responses: VerifyPrescriptionsApiResponse[]) {

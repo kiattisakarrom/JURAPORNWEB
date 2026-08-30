@@ -11,6 +11,7 @@ export interface VerifyPrescriptionPagination {
   PAGE: number;
   LIMIT: number;
   TOTAL_PATIENTS: number;
+  TOTAL_VISITS: number;
   TOTAL_PAGES: number;
 }
 

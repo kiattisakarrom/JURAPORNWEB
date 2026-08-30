@@ -14,7 +14,7 @@ import { PatientProfilePopup } from "@/features/patient-profile/PatientProfilePo
 export function CheckingCheckoutPopup({ patient, onClose }: { patient: PatientQueueItem; onClose: () => void }) {
   const [isProfileOpen, setIsProfileOpen] = useState(true);
   const { data: checkout, isLoading } = useQuery({
-    queryKey: ["checking-checkout", patient.id],
+    queryKey: ["checking-checkout", patient.id, patient.prescriptions?.[0]?.id],
     queryFn: () => getCheckingCheckout(patient),
   });
 

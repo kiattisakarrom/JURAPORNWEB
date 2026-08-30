@@ -13,7 +13,12 @@ import { WorkspaceHeader, type WorkspaceDateRange } from "@/features/shell/Works
 import type { WorkspaceNavItem, WorkspaceScreen } from "@/features/shell/shell-types";
 import { MatchingCheckingScreen } from "@/features/workflow/MatchingCheckingScreen";
 import { cn } from "@/lib/utils";
-import { getVerifyPrescriptionQueue, VERIFY_VISITS_PER_PAGE } from "@/lib/verify-prescriptions-api";
+import {
+  buildVerifyPrescriptionQueue,
+  getVerifyPrescriptionBackgroundPages,
+  getVerifyPrescriptionQueueFirstPage,
+  VERIFY_VISITS_PER_PAGE,
+} from "@/lib/verify-prescriptions-api";
 import {
   claimVerifyLock,
   createIdempotencyKey,
@@ -32,6 +37,7 @@ import type { PatientQueueItem, QueueStage, QueueSummary } from "@/types/pharmac
 import { CheckingCheckoutPopup } from "@/features/checking/CheckingCheckoutPopup";
 import { DispensingPopup } from "@/features/dispensing/DispensingPopup";
 import { MatchingPopup } from "@/features/matching/MatchingPopup";
+import { PickingPrescriptionPopup } from "@/features/picking/PickingPrescriptionPopup";
 import { PatientPanel } from "@/features/verify/PatientPanel";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
@@ -99,7 +105,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   });
   const liveTime = useLiveClock();
   const {
-    data: verifyQueue,
+    data: verifyFirstPage,
     error: verifyApiError,
     isError: isVerifyApiError,
     isFetching: isVerifyFetching,
@@ -107,11 +113,28 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     refetch: refetchVerify,
   } = useQuery({
     queryKey: ["verify-prescriptions", dateRange.fromDate, dateRange.toDate],
-    queryFn: ({ signal }) => getVerifyPrescriptionQueue(dateRange, signal),
+    queryFn: ({ signal }) => getVerifyPrescriptionQueueFirstPage(dateRange, signal),
     enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
-    placeholderData: (previousData) => previousData,
     refetchInterval: 30000,
     retry: 1,
+  });
+  const verifyApiTotalPages = verifyFirstPage?.PAGINATION.TOTAL_PAGES ?? 0;
+  const {
+    data: verifyBackgroundPages,
+    isError: isVerifyBackgroundError,
+    isFetching: isVerifyBackgroundFetching,
+    refetch: refetchVerifyBackground,
+  } = useQuery({
+    queryKey: [
+      "verify-prescriptions-background",
+      dateRange.fromDate,
+      dateRange.toDate,
+      verifyFirstPage?.PAGINATION.TOTAL_VISITS ?? 0,
+    ],
+    queryFn: ({ signal }) => getVerifyPrescriptionBackgroundPages(dateRange, verifyApiTotalPages, signal),
+    enabled: activeScreen === "verify" && verifyApiTotalPages > 1,
+    retry: 1,
+    staleTime: Number.POSITIVE_INFINITY,
   });
   const {
     data: packageWorkflows = [],
@@ -138,6 +161,18 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     retry: 1,
   });
 
+  const verifyQueue = useMemo(() => buildVerifyPrescriptionQueue(
+    verifyFirstPage
+      ? [verifyFirstPage, ...(verifyBackgroundPages ?? [])]
+      : [],
+  ), [verifyBackgroundPages, verifyFirstPage]);
+  const verifyBackgroundStatus: "loading" | "complete" | "error" = isVerifyBackgroundFetching
+    ? "loading"
+    : isVerifyBackgroundError
+      ? "error"
+      : verifyFirstPage && (verifyApiTotalPages <= 1 || verifyBackgroundPages)
+        ? "complete"
+        : "loading";
   const patients = useMemo(() => {
     return mergeVerifyQueueWithPackageWorkflow(verifyQueue?.patients ?? [], packageWorkflows, packages);
   }, [packageWorkflows, packages, verifyQueue?.patients]);
@@ -174,7 +209,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     });
     return next;
   }, [patients]);
-  const isCurrentQueueLoading = isPackageWorkflowLoading || isPackagesLoading || ((activeTab === "verify" || activeTab === "all") && isVerifyLoading);
+  const isCurrentQueueLoading = activeTab === "verify" || activeTab === "all"
+    ? isVerifyLoading
+    : isPackageWorkflowLoading || isPackagesLoading;
   const showVerifyError = activeTab === "verify" && (isVerifyApiError || isPackageWorkflowError || isPackagesError);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
@@ -183,7 +220,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     ? {
         ...selectedPatient,
         alerts: selectedPrescription.alerts,
+        clinicalAlerts: selectedPrescription.clinicalAlerts,
         drugs: selectedPrescription.drugs,
+        prescriptions: [selectedPrescription],
         issue: selectedPrescription.issue,
         medicationCount: selectedPrescription.drugs.length,
         time: selectedPrescription.time,
@@ -201,6 +240,8 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         ? "dispensing"
         : selectedPatient?.stage === "matching"
           ? "matching"
+          : selectedPatient?.stage === "picking"
+            ? "picking"
           : "verify";
 
   useEffect(() => {
@@ -452,6 +493,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         isLoading={isCurrentQueueLoading}
                         patients={visiblePatients}
                         selectedId={selectedPatient?.id}
+                        selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
                         onPrimaryAction={(patient) => void runPrimaryAction(patient)}
@@ -460,6 +502,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                       <MobileQueueList
                         patients={visiblePatients}
                         selectedId={selectedPatient?.id}
+                        selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
                         onPrimaryAction={(patient) => void runPrimaryAction(patient)}
@@ -468,11 +511,13 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                     </div>
                     {filteredPatients.length > 0 ? (
                       <VerifyPagination
+                        backgroundStatus={verifyBackgroundStatus}
                         isFetching={isVerifyFetching && (activeTab === "verify" || activeTab === "all")}
                         page={currentPage}
                         totalItems={filteredPatients.length}
                         totalPages={totalPages}
                         onPageChange={setVerifyPage}
+                        onRetryBackground={() => void refetchVerifyBackground()}
                       />
                     ) : null}
                   </>
@@ -493,14 +538,21 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           {activeScreen === "me" ? <MedicationErrorScreen search={search} /> : null}
         </div>
 
-        {activeScreen === "verify" && selectedPatient && selectedPanel === "checking" ? (
-          <CheckingCheckoutPopup patient={selectedPatient} onClose={closeSelectedItem} />
+        {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "checking" ? (
+          <CheckingCheckoutPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
         ) : null}
-        {activeScreen === "verify" && selectedPatient && selectedPanel === "dispensing" ? (
-          <DispensingPopup patient={selectedPatient} onClose={closeSelectedItem} />
+        {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "dispensing" ? (
+          <DispensingPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
         ) : null}
-        {activeScreen === "verify" && selectedPatient && selectedPanel === "matching" ? (
-          <MatchingPopup patient={selectedPatient} onClose={closeSelectedItem} />
+        {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "matching" ? (
+          <MatchingPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
+        ) : null}
+        {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "picking" ? (
+          <PickingPrescriptionPopup
+            patient={selectedPatientForPanel}
+            prescriptionNumber={selectedPrescription.pn}
+            onClose={closeSelectedItem}
+          />
         ) : null}
         {activeScreen === "verify" && selectedPatient?.stage === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
           <PatientPanel
@@ -517,17 +569,21 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
 }
 
 function VerifyPagination({
+  backgroundStatus,
   isFetching,
   page,
   totalItems,
   totalPages,
   onPageChange,
+  onRetryBackground,
 }: {
+  backgroundStatus: "loading" | "complete" | "error";
   isFetching: boolean;
   page: number;
   totalItems: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  onRetryBackground: () => void;
 }) {
   const firstItem = (page - 1) * VERIFY_VISITS_PER_PAGE + 1;
   const lastItem = Math.min(page * VERIFY_VISITS_PER_PAGE, totalItems);
@@ -535,8 +591,20 @@ function VerifyPagination({
   return (
     <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="font-bold text-slate-500">
-        แสดง VN {firstItem}–{lastItem} จาก {totalItems} VN
-        {isFetching ? <span className="ml-2 text-blue-600">กำลังอัปเดต...</span> : null}
+        แสดง VN {firstItem}–{lastItem}
+        {backgroundStatus === "complete" ? <> จาก {totalItems} VN</> : null}
+        {backgroundStatus === "loading" ? (
+          <span className="ml-2 text-blue-600">กำลังโหลดข้อมูลเบื้องหลัง…</span>
+        ) : null}
+        {backgroundStatus === "complete" ? (
+          <span className="ml-2 text-emerald-600">โหลดข้อมูลเบื้องหลังเสร็จแล้ว</span>
+        ) : null}
+        {backgroundStatus === "error" ? (
+          <button className="ml-2 font-black text-rose-600 underline underline-offset-2" onClick={onRetryBackground} type="button">
+            โหลดข้อมูลเบื้องหลังไม่สำเร็จ · ลองใหม่
+          </button>
+        ) : null}
+        {isFetching ? <span className="ml-2 text-blue-600">กำลังอัปเดตหน้าแรก...</span> : null}
       </div>
       <div className="flex items-center gap-2">
         <Button aria-label="หน้าก่อนหน้า" className="h-9 w-9 rounded-xl" disabled={page <= 1} onClick={() => onPageChange(page - 1)} size="icon" variant="outline">

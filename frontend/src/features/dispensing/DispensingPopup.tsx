@@ -14,7 +14,7 @@ import type { DispensingCheckoutResponse, PatientQueueItem } from "@/types/pharm
 export function DispensingPopup({ patient, onClose }: { patient: PatientQueueItem; onClose: () => void }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const { data: dispensing, isLoading } = useQuery({
-    queryKey: ["dispensing-checkout", patient.id],
+    queryKey: ["dispensing-checkout", patient.id, patient.prescriptions?.[0]?.id],
     queryFn: () => getDispensingCheckout(patient),
   });
 
@@ -88,7 +88,7 @@ function DispensingContent({ dispensing, onOpenProfile }: { dispensing: Dispensi
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2 text-base font-black text-slate-900">
             <FileText className="h-4 w-4 text-blue-600" />
-            รายการสั่งยาจากแพทย์ (Prescription)
+            รายการสั่งยาจากแพทย์ (PN {dispensing.prescriptionNumber ?? "—"})
           </div>
           <span className="text-sm font-black text-blue-700">ทั้งหมด {dispensing.totalItems} รายการ</span>
         </div>

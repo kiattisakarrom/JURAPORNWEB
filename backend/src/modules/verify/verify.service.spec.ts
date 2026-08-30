@@ -1,5 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
+import { VerifyClinicalAlert } from './interfaces/verify-response.interface';
+import { VerifyClinicalAlertService } from './verify-clinical-alert.service';
 import { VerifyService } from './verify.service';
 
 describe('VerifyService', () => {
@@ -8,6 +10,14 @@ describe('VerifyService', () => {
     visitNumber: 'VN0001',
     prescriptionNumber: 'RX0001',
   };
+
+  function createClinicalAlertService(
+    alerts = new Map<string, VerifyClinicalAlert[]>(),
+  ) {
+    return {
+      findAlerts: jest.fn().mockResolvedValue(alerts),
+    } as unknown as VerifyClinicalAlertService;
+  }
 
   it('maps joined rows into one prescription with items', async () => {
     const request = {
@@ -62,7 +72,23 @@ describe('VerifyService', () => {
     const databaseService = {
       createRequest: jest.fn().mockReturnValue(request),
     } as unknown as DatabaseService;
-    const service = new VerifyService(databaseService);
+    const alertMap = new Map([
+      [
+        'HN0001|2026-07-14|VN0001|RX0001|1|MED001',
+        [{
+          TYPE: 'AI' as const,
+          SIDE_EFFECT: 'ผื่นแดง',
+          ALLERGY_TYPE: 'Drug allergy',
+          SEVERITY: 'Severe',
+          REACTION: 'Rash',
+          REMARKS: null,
+        }],
+      ],
+    ]);
+    const service = new VerifyService(
+      databaseService,
+      createClinicalAlertService(alertMap),
+    );
 
     const result = await service.findPrescription(query);
 
@@ -82,6 +108,10 @@ describe('VerifyService', () => {
     expect(result.ITEMS[0].DOSEMEMO_TH).toBe(
       'รับประทานครั้งละ 1 เม็ด หลังอาหาร',
     );
+    expect(result.ITEMS[0].ALERTS).toEqual([
+      expect.objectContaining({ TYPE: 'AI', SIDE_EFFECT: 'ผื่นแดง' }),
+    ]);
+    expect(result.ITEMS[1].ALERTS).toEqual([]);
     expect(request.input).toHaveBeenCalledTimes(3);
   });
 
@@ -93,7 +123,10 @@ describe('VerifyService', () => {
     const databaseService = {
       createRequest: jest.fn().mockReturnValue(request),
     } as unknown as DatabaseService;
-    const service = new VerifyService(databaseService);
+    const service = new VerifyService(
+      databaseService,
+      createClinicalAlertService(),
+    );
 
     await expect(service.findPrescription(query)).rejects.toBeInstanceOf(
       NotFoundException,
@@ -104,7 +137,7 @@ describe('VerifyService', () => {
     const countRequest = {
       input: jest.fn().mockReturnThis(),
       query: jest.fn().mockResolvedValue({
-        recordset: [{ TOTAL_PATIENTS: 1 }],
+        recordset: [{ TOTAL_PATIENTS: 1, TOTAL_VISITS: 1 }],
       }),
     };
     const dataRequest = {
@@ -162,7 +195,10 @@ describe('VerifyService', () => {
         .mockReturnValueOnce(countRequest)
         .mockReturnValueOnce(dataRequest),
     } as unknown as DatabaseService;
-    const service = new VerifyService(databaseService);
+    const service = new VerifyService(
+      databaseService,
+      createClinicalAlertService(),
+    );
 
     const result = await service.findPrescriptions({
       patientId: 'HN0001',
@@ -174,6 +210,7 @@ describe('VerifyService', () => {
     });
 
     expect(result.PAGINATION.TOTAL_PATIENTS).toBe(1);
+    expect(result.PAGINATION.TOTAL_VISITS).toBe(1);
     expect(result.PATIENTS).toHaveLength(1);
     expect(result.PATIENTS[0].PRESCRIPTIONS).toHaveLength(1);
     expect(result.PATIENTS[0].PRESCRIPTIONS[0].CREATEDATETIME).toBe(
@@ -207,14 +244,20 @@ describe('VerifyService', () => {
     expect(countSql).toContain(
       'o.CREATEDATETIME < DATEADD(DAY, 1, @toDate)',
     );
+    expect(countSql).toContain(
+      'GROUP BY o.PATIENTID, o.VISITDATETIME, o.VISITNUMBER',
+    );
+    expect(countSql).toContain('COUNT_BIG(*) AS TOTAL_VISITS');
     expect(dataSql).not.toContain('o.VISITDATETIME >= @fromDate');
+    expect(dataSql).toContain('PagedVisits AS');
+    expect(dataSql).toContain('AND o.VISITNUMBER = selectedVisits.VISITNUMBER');
   });
 
   it('allows visitNumber as the only list filter', async () => {
     const countRequest = {
       input: jest.fn().mockReturnThis(),
       query: jest.fn().mockResolvedValue({
-        recordset: [{ TOTAL_PATIENTS: 0 }],
+        recordset: [{ TOTAL_PATIENTS: 0, TOTAL_VISITS: 0 }],
       }),
     };
     const dataRequest = {
@@ -227,7 +270,10 @@ describe('VerifyService', () => {
         .mockReturnValueOnce(countRequest)
         .mockReturnValueOnce(dataRequest),
     } as unknown as DatabaseService;
-    const service = new VerifyService(databaseService);
+    const service = new VerifyService(
+      databaseService,
+      createClinicalAlertService(),
+    );
 
     const result = await service.findPrescriptions({
       visitNumber: 'VN0001',
@@ -251,7 +297,10 @@ describe('VerifyService', () => {
     const databaseService = {
       createRequest: jest.fn(),
     } as unknown as DatabaseService;
-    const service = new VerifyService(databaseService);
+    const service = new VerifyService(
+      databaseService,
+      createClinicalAlertService(),
+    );
 
     await expect(
       service.findPrescriptions({ page: 1, limit: 20 }),

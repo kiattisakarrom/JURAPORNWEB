@@ -13,6 +13,11 @@ import {
   VerifyPrescriptionsResponse,
 } from './interfaces/verify-prescriptions-response.interface';
 import { VerifyItem, VerifyResponse } from './interfaces/verify-response.interface';
+import {
+  createVerifyAlertItemKey,
+  VerifyAlertItemScope,
+  VerifyClinicalAlertService,
+} from './verify-clinical-alert.service';
 
 interface VerifyQueryRow {
   PRESCRIPTION_CREATEDATETIME: Date | string | null;
@@ -34,8 +39,9 @@ interface VerifyQueryRow {
   DOSEMEMO_TH: string | null;
 }
 
-interface VerifyPatientCountRow {
+interface VerifyPaginationCountRow {
   TOTAL_PATIENTS: number | string;
+  TOTAL_VISITS: number | string;
 }
 
 interface VerifyPrescriptionListRow extends VerifyQueryRow {
@@ -44,7 +50,10 @@ interface VerifyPrescriptionListRow extends VerifyQueryRow {
 
 @Injectable()
 export class VerifyService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly clinicalAlertService: VerifyClinicalAlertService,
+  ) {}
 
   async findPrescription(query: GetVerifyQueryDto): Promise<VerifyResponse> {
     const request = this.databaseService.createRequest();
@@ -99,8 +108,12 @@ export class VerifyService {
     }
 
     const firstRow = result.recordset[0];
+    const alertMap = await this.clinicalAlertService.findAlerts(
+      this.createAlertScopes(result.recordset),
+    );
     const items = result.recordset.reduce<VerifyItem[]>((accumulator, row) => {
       if (row.ITEMSEQ !== null && row.MEDICINECODE !== null) {
+        const scope = this.createAlertScope(row);
         accumulator.push({
           ITEMSEQ: row.ITEMSEQ,
           CREATEDATETIME: this.toIsoDateTime(row.ITEM_CREATEDATETIME),
@@ -109,6 +122,9 @@ export class VerifyService {
           ORDERQTY: row.ORDERQTY,
           ORDERUNITCODE: row.ORDERUNITCODE,
           DOSEMEMO_TH: row.DOSEMEMO_TH,
+          ALERTS: scope
+            ? (alertMap.get(createVerifyAlertItemKey(scope)) ?? [])
+            : [],
         });
       }
 
@@ -144,16 +160,26 @@ export class VerifyService {
     const whereClause = this.buildListWhereClause(query);
     const countRequest = this.databaseService.createRequest();
     this.bindListFilters(countRequest, query);
-    const countResult = await countRequest.query<VerifyPatientCountRow>(`
-      SELECT COUNT_BIG(*) AS TOTAL_PATIENTS
-      FROM (
-        SELECT DISTINCT o.PATIENTID
+    const countResult = await countRequest.query<VerifyPaginationCountRow>(`
+      WITH FilteredVisits AS (
+        SELECT
+          o.PATIENTID,
+          o.VISITDATETIME,
+          o.VISITNUMBER
         FROM dbo.TBLORX AS o
         WHERE ${whereClause}
-      ) AS filteredPatients;
+        GROUP BY o.PATIENTID, o.VISITDATETIME, o.VISITNUMBER
+      )
+      SELECT
+        COUNT_BIG(DISTINCT PATIENTID) AS TOTAL_PATIENTS,
+        COUNT_BIG(*) AS TOTAL_VISITS
+      FROM FilteredVisits;
     `);
     const totalPatients = Number(
       countResult.recordset[0]?.TOTAL_PATIENTS ?? 0,
+    );
+    const totalVisits = Number(
+      countResult.recordset[0]?.TOTAL_VISITS ?? 0,
     );
 
     const dataRequest = this.databaseService.createRequest();
@@ -161,15 +187,28 @@ export class VerifyService {
     dataRequest.input('offset', sql.Int, (query.page - 1) * query.limit);
     dataRequest.input('limit', sql.Int, query.limit);
     const dataResult = await dataRequest.query<VerifyPrescriptionListRow>(`
-      WITH FilteredPatients AS (
-        SELECT DISTINCT o.PATIENTID
+      WITH FilteredVisits AS (
+        SELECT
+          o.PATIENTID,
+          o.VISITDATETIME,
+          o.VISITNUMBER,
+          MAX(o.CREATEDATETIME) AS LATEST_CREATEDATETIME
         FROM dbo.TBLORX AS o
         WHERE ${whereClause}
+        GROUP BY o.PATIENTID, o.VISITDATETIME, o.VISITNUMBER
       ),
-      PagedPatients AS (
-        SELECT PATIENTID
-        FROM FilteredPatients
-        ORDER BY PATIENTID
+      PagedVisits AS (
+        SELECT
+          PATIENTID,
+          VISITDATETIME,
+          VISITNUMBER,
+          LATEST_CREATEDATETIME
+        FROM FilteredVisits
+        ORDER BY
+          LATEST_CREATEDATETIME DESC,
+          VISITDATETIME DESC,
+          VISITNUMBER,
+          PATIENTID
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
       )
       SELECT
@@ -190,9 +229,11 @@ export class VerifyService {
         oi.ORDERQTY,
         oi.ORDERUNITCODE,
         oi.DOSEMEMO_TH
-      FROM PagedPatients AS selectedPatients
+      FROM PagedVisits AS selectedVisits
       JOIN dbo.TBLORX AS o
-        ON o.PATIENTID = selectedPatients.PATIENTID
+        ON o.PATIENTID = selectedVisits.PATIENTID
+       AND o.VISITDATETIME = selectedVisits.VISITDATETIME
+       AND o.VISITNUMBER = selectedVisits.VISITNUMBER
       LEFT JOIN dbo.TBLPATIENT AS p
         ON p.PATIENTID = o.PATIENTID
       LEFT JOIN dbo.TBLORXITEMS AS oi
@@ -205,16 +246,18 @@ export class VerifyService {
         ON d.DOCTORCODE = o.DOCTORORDERCODE
       LEFT JOIN dbo.TBLDEPT AS dept
         ON dept.DEPTCODE = o.CLINIC_CODE
-      WHERE ${whereClause}
       ORDER BY
-        o.PATIENTID,
-        o.CREATEDATETIME DESC,
-        o.VISITDATETIME DESC,
-        o.VISITNUMBER,
+        selectedVisits.LATEST_CREATEDATETIME DESC,
+        selectedVisits.VISITDATETIME DESC,
+        selectedVisits.VISITNUMBER,
+        selectedVisits.PATIENTID,
         o.PRESCRIPTIONNUMBER,
         oi.ITEMSEQ,
         oi.MEDICINECODE;
     `);
+    const alertMap = await this.clinicalAlertService.findAlerts(
+      this.createAlertScopes(dataResult.recordset),
+    );
 
     return {
       FILTER: {
@@ -227,10 +270,11 @@ export class VerifyService {
         PAGE: query.page,
         LIMIT: query.limit,
         TOTAL_PATIENTS: totalPatients,
+        TOTAL_VISITS: totalVisits,
         TOTAL_PAGES:
-          totalPatients === 0 ? 0 : Math.ceil(totalPatients / query.limit),
+          totalVisits === 0 ? 0 : Math.ceil(totalVisits / query.limit),
       },
-      PATIENTS: this.groupPrescriptionRows(dataResult.recordset),
+      PATIENTS: this.groupPrescriptionRows(dataResult.recordset, alertMap),
     };
   }
 
@@ -279,7 +323,10 @@ export class VerifyService {
       ORDER BY o.PATIENTID, o.PRESCRIPTIONNUMBER, oi.ITEMSEQ, oi.MEDICINECODE;
     `);
 
-    return this.groupPrescriptionRows(result.recordset);
+    const alertMap = await this.clinicalAlertService.findAlerts(
+      this.createAlertScopes(result.recordset),
+    );
+    return this.groupPrescriptionRows(result.recordset, alertMap);
   }
 
   private validateListFilters(query: GetVerifyPrescriptionsQueryDto): void {
@@ -346,6 +393,7 @@ export class VerifyService {
 
   private groupPrescriptionRows(
     rows: VerifyPrescriptionListRow[],
+    alertMap: ReadonlyMap<string, VerifyItem['ALERTS']>,
   ): VerifyPrescriptionPatient[] {
     const patientMap = new Map<string, VerifyPrescriptionPatient>();
     const prescriptionMap = new Map<string, VerifyPrescriptionListItem>();
@@ -390,6 +438,7 @@ export class VerifyService {
       }
 
       if (row.ITEMSEQ !== null && row.MEDICINECODE !== null) {
+        const scope = this.createAlertScope(row);
         prescription.ITEMS.push({
           ITEMSEQ: row.ITEMSEQ,
           CREATEDATETIME: this.toIsoDateTime(row.ITEM_CREATEDATETIME),
@@ -398,11 +447,43 @@ export class VerifyService {
           ORDERQTY: row.ORDERQTY,
           ORDERUNITCODE: row.ORDERUNITCODE,
           DOSEMEMO_TH: row.DOSEMEMO_TH,
+          ALERTS: scope
+            ? (alertMap.get(createVerifyAlertItemKey(scope)) ?? [])
+            : [],
         });
       }
     }
 
     return Array.from(patientMap.values());
+  }
+
+  private createAlertScopes(rows: VerifyQueryRow[]): VerifyAlertItemScope[] {
+    return rows.reduce<VerifyAlertItemScope[]>((scopes, row) => {
+      const scope = this.createAlertScope(row);
+      if (scope) scopes.push(scope);
+      return scopes;
+    }, []);
+  }
+
+  private createAlertScope(
+    row: VerifyQueryRow,
+  ): VerifyAlertItemScope | null {
+    if (
+      !row.PATIENTID ||
+      row.ITEMSEQ === null ||
+      !row.MEDICINECODE
+    ) {
+      return null;
+    }
+
+    return {
+      PATIENTID: row.PATIENTID,
+      VISITDATETIME: this.toDateOnly(row.VISITDATETIME),
+      VISITNUMBER: row.VISITNUMBER,
+      PRESCRIPTIONNUMBER: row.PRESCRIPTIONNUMBER,
+      ITEMSEQ: row.ITEMSEQ,
+      MEDICINECODE: row.MEDICINECODE,
+    };
   }
 
   private toDateOnly(value: Date | string): string {

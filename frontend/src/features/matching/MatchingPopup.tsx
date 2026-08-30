@@ -16,7 +16,7 @@ export function MatchingPopup({ patient, onClose }: { patient: PatientQueueItem;
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<string | null>(null);
   const [selectedMedicineId, setSelectedMedicineId] = useState<string | null>(null);
   const { data: matching, isLoading } = useQuery({
-    queryKey: ["matching-checkout", patient.id],
+    queryKey: ["matching-checkout", patient.id, patient.prescriptions?.[0]?.id],
     queryFn: () => getMatchingCheckout(patient),
   });
 

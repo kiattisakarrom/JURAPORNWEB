@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PatientPrescription, PatientQueueItem } from "@/types/pharmacy";
-import { alertIcon, alertStyles, durationClass, priorityStyles, stageDotStyles, stageLabel, stageStyles } from "./queue-ui";
+import { ClinicalAlertBadges } from "./ClinicalAlertBadges";
+import { durationClass, priorityStyles, stageDotStyles, stageLabel, stageStyles } from "./queue-ui";
 import { VerifyStatusCheckbox } from "./VerifyStatusCheckbox";
 
 function handleKeyboardActivate(event: React.KeyboardEvent, action: () => void) {
@@ -20,13 +21,13 @@ function PrescriptionRow({
   patient,
   prescription,
   isVerified,
-  selectedId,
+  selectedPrescriptionId,
   onSelect,
 }: {
   patient: PatientQueueItem;
   prescription: PatientPrescription;
   isVerified: boolean;
-  selectedId?: string;
+  selectedPrescriptionId?: string;
   onSelect: (id: string, prescriptionId?: string) => void;
 }) {
   const selectRow = () => onSelect(patient.id, prescription.id);
@@ -35,7 +36,7 @@ function PrescriptionRow({
     <div
       className={cn(
         "grid cursor-pointer grid-cols-[110px_120px_100px_116px_150px_76px_130px_90px_minmax(200px,1fr)_88px] items-center gap-3 px-4 py-3 transition hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
-        selectedId === patient.id && "bg-blue-50",
+        selectedPrescriptionId === prescription.id && "bg-blue-50 ring-1 ring-inset ring-blue-200",
       )}
       onClick={selectRow}
       onKeyDown={(event) => handleKeyboardActivate(event, selectRow)}
@@ -52,16 +53,18 @@ function PrescriptionRow({
         <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[prescription.stage])} />
         {stageLabel(prescription.stage)}
       </Badge>
-      <span className="flex gap-2">
-        {prescription.alerts.length ? prescription.alerts.map((alert) => (
-          <span className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-[10px]", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
-        )) : <span className="text-sm font-bold text-slate-300">ไม่มี</span>}
+      <span>
+        <ClinicalAlertBadges alerts={prescription.alerts} clinicalAlerts={prescription.clinicalAlerts} />
       </span>
       <span className="font-mono text-xs font-bold text-slate-400">{prescription.time}</span>
       <span className="text-sm font-bold text-slate-600">{prescription.drugs.length} รายการ</span>
       <span className={cn("font-mono text-sm font-bold", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)}</span>
       <span className="truncate text-sm font-bold text-slate-600">{prescription.doctor ?? patient.doctor ?? "รอข้อมูลแพทย์"}</span>
-      <VerifyStatusCheckbox checked={isVerified} label={`สถานะ Verify PN ${prescription.pn}`} />
+      {prescription.stage === "verify" ? (
+        <VerifyStatusCheckbox checked={isVerified} label={`สถานะ Verify PN ${prescription.pn}`} />
+      ) : (
+        <span className="text-xs font-bold text-slate-400">{stageLabel(prescription.stage)}</span>
+      )}
     </div>
   );
 }
@@ -69,6 +72,7 @@ function PrescriptionRow({
 export function QueueTable({
   patients,
   selectedId,
+  selectedPrescriptionId,
   isLoading,
   verifiedPrescriptionIds,
   onSelect,
@@ -77,16 +81,17 @@ export function QueueTable({
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
+  selectedPrescriptionId?: string;
   isLoading: boolean;
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
   onPrimaryAction: (patient: PatientQueueItem) => void;
 }) {
-  const [expandedVn, setExpandedVn] = useState<string | null>(null);
+  const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
 
-  function toggleExpanded(vn: string) {
-    setExpandedVn((current) => current === vn ? null : vn);
+  function toggleExpanded(patientId: string) {
+    setExpandedPatientId((current) => current === patientId ? null : patientId);
   }
 
   return (
@@ -120,11 +125,11 @@ export function QueueTable({
           ) : patients.map((patient) => {
             const prescriptions = patient.prescriptions ?? [];
             const hasPrescriptions = prescriptions.length > 0;
-            const isExpanded = expandedVn === patient.vn;
+            const isExpanded = expandedPatientId === patient.id;
             const isSelected = selectedId === patient.id;
             const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
             const hasPrimaryAction = patient.stage === "verify" || patient.stage === "picking";
-            const activateRow = () => hasPrescriptions ? toggleExpanded(patient.vn) : onSelect(patient.id);
+            const activateRow = () => hasPrescriptions ? toggleExpanded(patient.id) : onSelect(patient.id);
 
             return (
               <Fragment key={patient.id}>
@@ -151,11 +156,7 @@ export function QueueTable({
                   <td className="px-4 text-sm font-black text-blue-700">{prescriptions.length} PN</td>
                   <td className="px-4 text-sm font-semibold text-[#56657a]">{patient.medicationCount} รายการ</td>
                   <td className="px-4">
-                    <div className="flex gap-2">
-                      {patient.alerts.length ? patient.alerts.map((alert) => (
-                        <span className={cn("flex h-[30px] w-[30px] items-center justify-center rounded-[10px]", alertStyles[alert])} key={alert}>{alertIcon(alert)}</span>
-                      )) : <span className="text-sm font-bold text-slate-300">ไม่มี</span>}
-                    </div>
+                    <ClinicalAlertBadges alerts={patient.alerts} clinicalAlerts={patient.clinicalAlerts} />
                   </td>
                   <td className="px-4" onClick={(event) => event.stopPropagation()}>
                     {hasPrimaryAction ? (
@@ -213,7 +214,7 @@ export function QueueTable({
                                 onSelect={onSelect}
                                 patient={patient}
                                 prescription={prescription}
-                                selectedId={selectedId}
+                                selectedPrescriptionId={selectedPrescriptionId}
                               />
                             ))}
                           </div>

@@ -21,7 +21,8 @@
     "db:package:live": "DB_PROFILE=live node scripts/run-sql-file.js sql/001_create_package_workflow_schema.sql",
     "db:package:validate:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/003_validate_package_workflow.sql",
     "db:package:validate:live": "DB_PROFILE=live node scripts/run-sql-file.js sql/003_validate_package_workflow.sql",
-    "db:workflow:cleanup:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/002_drop_legacy_workflow_schema.sql"
+    "db:workflow:cleanup:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/002_drop_legacy_workflow_schema.sql",
+    "db:seed:verify-alerts:local": "DB_PROFILE=local node scripts/run-sql-file.js sql/004_seed_verify_alert_test_data.sql"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

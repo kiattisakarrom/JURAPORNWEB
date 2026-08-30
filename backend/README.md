@@ -36,6 +36,12 @@ npm run start:dev:local
 npm run start:dev:live
 ```
 
+โปรไฟล์ Live ตั้ง `PACKAGE_WORKFLOW_ENABLED=false` ไว้เป็นค่าเริ่มต้น เพราะฐาน
+`PharmaDB` ยังไม่มีตาราง `TBLWORKFLOWMASTER` และตาราง Package ที่เกี่ยวข้อง
+API รายการ `GET /package-workflows` และ `GET /packages` จะตอบ `[]` โดยไม่ query
+ตารางเหล่านี้ ส่วน API ที่ต้องเขียน Workflow จะตอบ `503` อย่างชัดเจน แต่ API
+Verify และ Patient ที่อ่านข้อมูลต้นทางยังใช้งานได้ตามปกติ
+
 Backend ใช้ Port `3001` เป็นค่าเริ่มต้น
 
 ## Package workflow database
@@ -59,6 +65,9 @@ npm run db:package:validate:local
 npm run db:package:live
 npm run db:package:validate:live
 ```
+
+หลังสร้างและ validate ตาราง Live สำเร็จแล้ว จึงเปลี่ยน
+`PACKAGE_WORKFLOW_ENABLED=true` ใน `.env.live` และเริ่ม Backend ใหม่
 
 SQL ต้นฉบับอยู่ที่ `sql/001_create_package_workflow_schema.sql` ส่วนไฟล์ลบ
 ของเดิมอยู่ที่ `sql/002_drop_legacy_workflow_schema.sql` และรายละเอียด API อยู่ที่
