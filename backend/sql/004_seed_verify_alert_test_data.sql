@@ -1,8 +1,30 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @Today date = CONVERT(date, SYSDATETIME());
-DECLARE @Now datetime2(3) = SYSDATETIME();
+/*
+  TEST DATA ONLY. Run through npm run db:seed:verify-alerts:local on a copied/local database.
+  Never run this file on Live. It inserts and replaces only the reserved TEST cases below.
+*/
+PRINT 'WARNING: installing JurapornWeb AI/DI TEST data in database [' + DB_NAME() + '].';
+
+IF DB_NAME() IN (N'master', N'model', N'msdb', N'tempdb')
+  THROW 51000, 'Select a copied/local application database before running the test seed.', 1;
+
+IF EXISTS (
+  SELECT 1
+  FROM (VALUES
+    (N'TBLORX'), (N'TBLORXITEMS'), (N'TBLPATIENT'), (N'TBLMEDITEMSINFO'),
+    (N'TBLDOCTOR'), (N'TBLDEPT'), (N'TBLALLERGY'), (N'DrugInteraction'),
+    (N'TBLWORKFLOWMASTER'), (N'TBLPACKAGEPRESCRIPTIONS'), (N'TBLPACKAGEMASTER'),
+    (N'TBLPACKAGEITEMS'), (N'TBLPACKAGEEVENTS')
+  ) AS required(TABLE_NAME)
+  WHERE OBJECT_ID(N'dbo.' + required.TABLE_NAME, N'U') IS NULL
+)
+  THROW 51000, 'The full-stack schema and source tables must exist before installing alert test data.', 1;
+
+-- Hospital UI uses Thailand local dates; SQL Server may itself be configured in UTC.
+DECLARE @Now datetime2(3) = DATEADD(MINUTE, 420, SYSUTCDATETIME());
+DECLARE @Today date = CONVERT(date, @Now);
 
 DECLARE @Patients TABLE (
   PATIENTID varchar(15) NOT NULL PRIMARY KEY,
@@ -43,10 +65,10 @@ DECLARE @Prescriptions TABLE (
 
 INSERT INTO @Prescriptions (VISITNUMBER, PRESCRIPTIONNUMBER, PATIENTID, CREATEDATETIME)
 VALUES
-  ('TSAI000001', '01', 'TESTAI000001',  DATEADD(SECOND, -30, @Now)),
-  ('TSDI000001', '01', 'TESTDI000001',  DATEADD(SECOND, -20, @Now)),
-  ('TSDI000001', '02', 'TESTDI000001',  DATEADD(SECOND, -19, @Now)),
-  ('TSAD000001', '01', 'TESTAIDI00001', DATEADD(SECOND, -10, @Now));
+  ('TESTAI0001', '01', 'TESTAI000001',  DATEADD(SECOND, -30, @Now)),
+  ('TESTDI0001', '01', 'TESTDI000001',  DATEADD(SECOND, -20, @Now)),
+  ('TESTDI0001', '02', 'TESTDI000001',  DATEADD(SECOND, -19, @Now)),
+  ('TESTAD0001', '01', 'TESTAIDI00001', DATEADD(SECOND, -10, @Now));
 
 DECLARE @Items TABLE (
   VISITNUMBER varchar(10) NOT NULL,
@@ -65,14 +87,27 @@ INSERT INTO @Items (
   MEDICINECODE, ORDERQTY, ORDERUNITCODE, DOSEMEMO_TH
 )
 VALUES
-  ('TSAI000001', '01', 'TESTAI000001',  1, '1499900001', 20, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 2 ครั้ง หลังอาหารเช้าและเย็น'),
-  ('TSDI000001', '01', 'TESTDI000001',  1, '1499900011', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง เวลาเย็น'),
-  ('TSDI000001', '02', 'TESTDI000001',  1, '1499900012', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง หลังอาหารเช้า'),
-  ('TSAD000001', '01', 'TESTAIDI00001', 1, '1499900021', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง ก่อนนอน'),
-  ('TSAD000001', '01', 'TESTAIDI00001', 2, '1499900022', 14, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 2 ครั้ง หลังอาหารเช้าและเย็น รับประทานติดต่อกันจนหมด');
+  ('TESTAI0001', '01', 'TESTAI000001',  1, '1499900001', 20, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 2 ครั้ง หลังอาหารเช้าและเย็น'),
+  ('TESTDI0001', '01', 'TESTDI000001',  1, '1499900011', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง เวลาเย็น'),
+  ('TESTDI0001', '02', 'TESTDI000001',  1, '1499900012', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง หลังอาหารเช้า'),
+  ('TESTAD0001', '01', 'TESTAIDI00001', 1, '1499900021', 30, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 1 ครั้ง ก่อนนอน'),
+  ('TESTAD0001', '01', 'TESTAIDI00001', 2, '1499900022', 14, 'TAB', N'รับประทานครั้งละ 1 เม็ด วันละ 2 ครั้ง หลังอาหารเช้าและเย็น รับประทานติดต่อกันจนหมด');
 
 BEGIN TRY
   BEGIN TRANSACTION;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dbo.TBLORX AS prescription
+    JOIN @Prescriptions AS seed
+      ON seed.VISITNUMBER = prescription.VISITNUMBER
+     AND seed.PRESCRIPTIONNUMBER = prescription.PRESCRIPTIONNUMBER
+    WHERE (
+        LTRIM(RTRIM(ISNULL(prescription.PATIENTID, ''))) <> seed.PATIENTID
+        OR LTRIM(RTRIM(ISNULL(prescription.ENTRYUSERBY, ''))) <> 'CODEX-SEED'
+      )
+  )
+    THROW 51000, 'Reserved TEST visit/prescription code is already used by non-seed data. No data was changed.', 1;
 
   IF EXISTS (
     SELECT 1
@@ -97,8 +132,10 @@ BEGIN TRY
     INSERT INTO @WorkflowIds (WORKFLOW_ID)
     SELECT workflow.WORKFLOW_ID
     FROM dbo.TBLWORKFLOWMASTER AS workflow
-    WHERE workflow.VISITDATETIME = @Today
-      AND workflow.VISITNUMBER IN ('TSAI000001', 'TSDI000001', 'TSAD000001');
+    WHERE workflow.VISITNUMBER IN (
+        'TESTAI0001', 'TESTDI0001', 'TESTAD0001',
+        'TSAI000001', 'TSDI000001', 'TSAD000001'
+      );
 
     DELETE event
     FROM dbo.TBLPACKAGEEVENTS AS event
@@ -123,13 +160,17 @@ BEGIN TRY
 
   DELETE item
   FROM dbo.TBLORXITEMS AS item
-  WHERE item.VISITDATETIME = @Today
-    AND item.VISITNUMBER IN ('TSAI000001', 'TSDI000001', 'TSAD000001');
+  WHERE item.VISITNUMBER IN (
+      'TESTAI0001', 'TESTDI0001', 'TESTAD0001',
+      'TSAI000001', 'TSDI000001', 'TSAD000001'
+    );
 
   DELETE prescription
   FROM dbo.TBLORX AS prescription
-  WHERE prescription.VISITDATETIME = @Today
-    AND prescription.VISITNUMBER IN ('TSAI000001', 'TSDI000001', 'TSAD000001');
+  WHERE prescription.VISITNUMBER IN (
+      'TESTAI0001', 'TESTDI0001', 'TESTAD0001',
+      'TSAI000001', 'TSDI000001', 'TSAD000001'
+    );
 
   DELETE allergy
   FROM dbo.TBLALLERGY AS allergy
@@ -215,7 +256,7 @@ BEGIN TRY
   SELECT
     seed.CREATEDATETIME, @Today, seed.VISITNUMBER, seed.PRESCRIPTIONNUMBER,
     seed.PATIENTID, 'TSTDR01',
-    CASE seed.VISITNUMBER WHEN 'TSAI000001' THEN 901 WHEN 'TSDI000001' THEN 902 ELSE 903 END,
+    CASE seed.VISITNUMBER WHEN 'TESTAI0001' THEN 901 WHEN 'TESTDI0001' THEN 902 ELSE 903 END,
     CONVERT(int, seed.PRESCRIPTIONNUMBER), 'CODEX-SEED',
     'NORMAL', 'ACTIVE', @Now, @Now, 'TSTCLINIC'
   FROM @Prescriptions AS seed;
@@ -283,4 +324,3 @@ JOIN @Items AS item
  AND item.PRESCRIPTIONNUMBER = prescription.PRESCRIPTIONNUMBER
 JOIN @Medicines AS medicine ON medicine.MEDICINECODE = item.MEDICINECODE
 ORDER BY prescription.VISITNUMBER, prescription.PRESCRIPTIONNUMBER, item.ITEMSEQ;
-

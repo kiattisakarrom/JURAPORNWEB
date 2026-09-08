@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Barcode,
   CheckCircle2,
@@ -10,6 +9,7 @@ import {
   Filter,
   Info,
   LockKeyhole,
+  NotebookPen,
   PackageCheck,
   Printer,
   RefreshCw,
@@ -21,14 +21,15 @@ import { Button } from "@/components/ui/button";
 import { MedicationErrorReportModal } from "@/features/medication-error/MedicationErrorReportModal";
 import type { WorkflowBasketItem, WorkflowStage } from "@/lib/workstation-api";
 import {
-  getPackages,
   mapPackageToBasket,
   scanPackageMatchingMedicine,
   transitionPackage,
   validatePackageCheckingPair,
   type PackagePage,
+  type MedicationPackage,
 } from "@/lib/package-workflow-api";
 import { cn } from "@/lib/utils";
+import { PackageNoteModal } from "./PackageNoteModal";
 
 function progressOf(basket: WorkflowBasketItem) {
   const done = basket.items.filter((item) => item.status === "done").length;
@@ -55,12 +56,19 @@ export function MatchingCheckingScreen({
   search,
   stage,
   onOpenChecking,
+  packages,
+  isLoading,
+  connected,
+  onRefresh,
 }: {
   search: string;
   stage: WorkflowStage;
   onOpenChecking: () => void;
+  packages: MedicationPackage[];
+  isLoading: boolean;
+  connected: boolean;
+  onRefresh: () => Promise<void>;
 }) {
-  const queryClient = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guideCode, setGuideCode] = useState("");
   const [medicineCode, setMedicineCode] = useState("");
@@ -72,14 +80,11 @@ export function MatchingCheckingScreen({
   const [confirmedMedicineItemId, setConfirmedMedicineItemId] = useState<string | null>(null);
   const [selectedMedicationErrorItemId, setSelectedMedicationErrorItemId] = useState<string | null>(null);
   const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
+  const [isNoteOpen, setIsNoteOpen] = useState(false);
   const [printedAt, setPrintedAt] = useState<Record<string, string>>({});
   const [checkedAt, setCheckedAt] = useState<Record<string, string>>({});
   const apiStage = stage.toUpperCase() as PackagePage;
-  const { data: itemPackages = [], isLoading } = useQuery({
-    queryKey: ["package-baskets", stage],
-    queryFn: () => getPackages({ pageNow: apiStage }),
-    refetchInterval: 10000,
-  });
+  const itemPackages = useMemo(() => packages.filter(p => p.PAGE_NOW === apiStage), [packages, apiStage]);
 
   const baskets = useMemo(
     () => itemPackages.map((itemPackage) => mapPackageToBasket(itemPackage, stage)),
@@ -96,6 +101,7 @@ export function MatchingCheckingScreen({
   }, [baskets, search, stage]);
 
   const selected = filtered.find((basket) => basket.id === selectedId);
+  const selectedPackage = itemPackages.find((itemPackage) => itemPackage.PACKAGE_ID === selectedId);
   const selectedProgress = selected ? progressOf(selected) : undefined;
   const selectedMedicationErrorItem = selected?.items.find((item) => item.id === selectedMedicationErrorItemId);
 
@@ -111,6 +117,7 @@ export function MatchingCheckingScreen({
     setConfirmedMedicineItemId(null);
     setSelectedMedicationErrorItemId(null);
     setIsMedicationErrorOpen(false);
+    setIsNoteOpen(false);
   }
 
   function findGuide(codeValue = guideCode) {
@@ -158,15 +165,11 @@ export function MatchingCheckingScreen({
   }
 
   async function refreshBaskets() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["package-baskets"] }),
-      queryClient.invalidateQueries({ queryKey: ["packages"] }),
-      queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
-      queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
-    ]);
+    await onRefresh();
   }
 
   async function scanMedicine() {
+    if (!connected) { setMedicineError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     if (!selected || stage !== "matching") return;
 
     const code = medicineCode.trim().toLowerCase();
@@ -218,6 +221,7 @@ export function MatchingCheckingScreen({
   }
 
   async function verifyStickerWithDrug() {
+    if (!connected) { setCheckingError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     if (!selected || stage !== "checking") return;
 
     if (!confirmedMedicineItemId) {
@@ -254,6 +258,7 @@ export function MatchingCheckingScreen({
   }
 
   async function sendSelectedToChecking() {
+    if (!connected) { setMedicineError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
 
     try {
@@ -269,6 +274,7 @@ export function MatchingCheckingScreen({
   }
 
   async function sendSelectedToDispensing() {
+    if (!connected) { setCheckingError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
     try {
       await transitionPackage(selected.id, "SEND_TO_DISPENSING");
@@ -281,6 +287,8 @@ export function MatchingCheckingScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f9fc]">
+      {packages.find(p => p.PACKAGE_ID === selectedId)?.SOURCE_CHANGED ? <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">ข้อมูลใบยาต้นทางเปลี่ยนหลังสร้างแพ็กเกจ — รายการยาและ QR ของแพ็กเกจนี้ยังเป็นข้อมูลเดิม</div> : null}
+      {selectedId && !selected && !isLoading ? <div role="status" className="border-b border-blue-200 bg-blue-50 px-5 py-3 text-sm text-blue-800">รายการที่เลือกไม่อยู่ในหน้านี้แล้ว กรุณาเลือกใบนำทางใหม่</div> : null}
       {stage === "matching" ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
@@ -383,7 +391,13 @@ export function MatchingCheckingScreen({
             <section className="flex min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-0">
               <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                  <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                    <Button className="h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setIsNoteOpen(true)} size="sm" variant="outline">
+                      <NotebookPen className="h-4 w-4" />
+                      บันทึก / NOTE
+                    </Button>
+                  </div>
                   <div className="flex min-w-[220px] items-center gap-4">
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
                       <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />
@@ -551,6 +565,7 @@ export function MatchingCheckingScreen({
           onConfirmMedicine={confirmCheckingMedicine}
           onFindGuide={findGuide}
           onOpenMedicationError={() => setIsMedicationErrorOpen(true)}
+          onOpenNote={() => setIsNoteOpen(true)}
           onSelect={selectBasket}
           onSelectMedicationErrorItem={setSelectedMedicationErrorItemId}
           onSendToDispensing={() => void sendSelectedToDispensing()}
@@ -584,6 +599,15 @@ export function MatchingCheckingScreen({
           onClose={() => setIsMedicationErrorOpen(false)}
         />
       ) : null}
+
+      {isNoteOpen && selectedPackage ? (
+        <PackageNoteModal
+          connected={connected}
+          itemPackage={selectedPackage}
+          onClose={() => setIsNoteOpen(false)}
+          onSaved={refreshBaskets}
+        />
+      ) : null}
     </div>
   );
 }
@@ -609,6 +633,7 @@ function CheckingWorkspace({
   selectedMedicationErrorItemId,
   onSelectMedicationErrorItem,
   onOpenMedicationError,
+  onOpenNote,
   onSendToDispensing,
 }: {
   baskets: WorkflowBasketItem[];
@@ -631,6 +656,7 @@ function CheckingWorkspace({
   selectedMedicationErrorItemId: string | null;
   onSelectMedicationErrorItem: (id: string) => void;
   onOpenMedicationError: () => void;
+  onOpenNote: () => void;
   onSendToDispensing: () => void;
 }) {
   const selectedProgress = selected ? progressOf(selected) : undefined;
@@ -730,7 +756,13 @@ function CheckingWorkspace({
         <section className="flex min-h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-0">
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+              <div className="flex flex-wrap items-center gap-3">
+                <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                <Button className="h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={onOpenNote} size="sm" variant="outline">
+                  <NotebookPen className="h-4 w-4" />
+                  บันทึก / NOTE
+                </Button>
+              </div>
               <div className="flex min-w-[220px] items-center gap-4">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
                   <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />

@@ -47,7 +47,7 @@ export async function apiGet<T>(
   return body as T;
 }
 
-export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+export async function apiPost<T>(path: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
   const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
   const response = await fetch(url, {
     body: JSON.stringify(body),
@@ -57,6 +57,28 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
       "Content-Type": "application/json",
     },
     method: "POST",
+    signal: options.signal,
+  });
+
+  const responseBody = await parseResponseBody(response);
+  if (!response.ok) {
+    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+  }
+
+  return responseBody as T;
+}
+
+export async function apiPut<T>(path: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
+  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const response = await fetch(url, {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PUT",
+    signal: options.signal,
   });
 
   const responseBody = await parseResponseBody(response);

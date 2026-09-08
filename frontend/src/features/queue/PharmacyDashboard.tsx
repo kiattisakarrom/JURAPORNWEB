@@ -1,8 +1,10 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRealtimeQueue } from "@/hooks/useRealtimeQueue";
+import { mapVerifyPatientsToQueue } from "@/lib/verify-prescriptions-adapter";
 import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, ClipboardCheck, FileWarning, PackageCheck, Pill, RefreshCw, ScanBarcode } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
@@ -13,21 +15,18 @@ import { WorkspaceHeader, type WorkspaceDateRange } from "@/features/shell/Works
 import type { WorkspaceNavItem, WorkspaceScreen } from "@/features/shell/shell-types";
 import { MatchingCheckingScreen } from "@/features/workflow/MatchingCheckingScreen";
 import { cn } from "@/lib/utils";
+import { ApiClientError } from "@/lib/api-client";
 import {
-  buildVerifyPrescriptionQueue,
-  getVerifyPrescriptionBackgroundPages,
-  getVerifyPrescriptionQueueFirstPage,
   VERIFY_VISITS_PER_PAGE,
 } from "@/lib/verify-prescriptions-api";
 import {
   claimVerifyLock,
   createIdempotencyKey,
-  getPackages,
-  getPackageWorkflows,
   getVerifySessionId,
   heartbeatVerifyLock,
   releaseVerifyLock,
   returnPackageWorkflowToVerify,
+  saveVerifyNote,
   setPackageWorkflowPending,
   transitionPackage,
   verifyPackagePrescription,
@@ -39,6 +38,13 @@ import { DispensingPopup } from "@/features/dispensing/DispensingPopup";
 import { MatchingPopup } from "@/features/matching/MatchingPopup";
 import { PickingPrescriptionPopup } from "@/features/picking/PickingPrescriptionPopup";
 import { PatientPanel } from "@/features/verify/PatientPanel";
+import {
+  buildWorkspaceHref,
+  parseWorkspaceNavigation,
+  popupCloseMode,
+  workspaceScreenFromPathname,
+  type WorkspacePopupTarget,
+} from "@/lib/workspace-navigation";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
 
@@ -83,9 +89,20 @@ function useLiveClock() {
 }
 
 export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
-  const queryClient = useQueryClient();
-  const [activeScreen, setActiveScreen] = useState<WorkspaceScreen>("verify");
-  const [activeTab, setActiveTab] = useState<QueueStage>("verify");
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [fallbackDate] = useState(getBangkokDate);
+  const navigation = useMemo(
+    () => parseWorkspaceNavigation(searchParams.toString(), fallbackDate),
+    [fallbackDate, searchParams],
+  );
+  const activeScreen = workspaceScreenFromPathname(pathname) ?? "verify";
+  const activeTab = navigation.tab;
+  const dateRange: WorkspaceDateRange = useMemo(() => ({
+    fromDate: navigation.fromDate,
+    toDate: navigation.toDate,
+  }), [navigation.fromDate, navigation.toDate]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<string | null>(null);
@@ -93,86 +110,35 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     workflowId: string | null;
     lockToken: string | null;
     sessionId: string;
+    datasetId: string;
+    sourceRevision?: string;
+    noteDraft?: string | null;
+    noteUpdatedAt?: string | null;
     isReadOnly: boolean;
     isLoading: boolean;
     ownerName?: string | null;
   } | null>(null);
   const verifyAccessRequestRef = useRef(0);
+  const panelOpenedByAppRef = useRef(false);
+  const suppressMissingPopupRef = useRef(false);
+  const closingPopupRef = useRef(false);
+  const restoredPopupRef = useRef<string | null>(null);
+  const invalidPopupRef = useRef<string | null>(null);
+  const lastPopupRef = useRef<WorkspacePopupTarget | null>(null);
+  const navigationClosePendingRef = useRef(false);
+  const selectedStageAtOpenRef = useRef<PatientQueueItem["stage"] | null>(null);
+  const [patientPanelCloseRequest, setPatientPanelCloseRequest] = useState(0);
   const [verifyPage, setVerifyPage] = useState(1);
-  const [dateRange, setDateRange] = useState<WorkspaceDateRange>(() => {
-    const today = getBangkokDate();
-    return { fromDate: today, toDate: today };
-  });
   const liveTime = useLiveClock();
-  const {
-    data: verifyFirstPage,
-    error: verifyApiError,
-    isError: isVerifyApiError,
-    isFetching: isVerifyFetching,
-    isLoading: isVerifyLoading,
-    refetch: refetchVerify,
-  } = useQuery({
-    queryKey: ["verify-prescriptions", dateRange.fromDate, dateRange.toDate],
-    queryFn: ({ signal }) => getVerifyPrescriptionQueueFirstPage(dateRange, signal),
-    enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
-    refetchInterval: 30000,
-    retry: 1,
-  });
-  const verifyApiTotalPages = verifyFirstPage?.PAGINATION.TOTAL_PAGES ?? 0;
-  const {
-    data: verifyBackgroundPages,
-    isError: isVerifyBackgroundError,
-    isFetching: isVerifyBackgroundFetching,
-    refetch: refetchVerifyBackground,
-  } = useQuery({
-    queryKey: [
-      "verify-prescriptions-background",
-      dateRange.fromDate,
-      dateRange.toDate,
-      verifyFirstPage?.PAGINATION.TOTAL_VISITS ?? 0,
-    ],
-    queryFn: ({ signal }) => getVerifyPrescriptionBackgroundPages(dateRange, verifyApiTotalPages, signal),
-    enabled: activeScreen === "verify" && verifyApiTotalPages > 1,
-    retry: 1,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  const {
-    data: packageWorkflows = [],
-    error: packageWorkflowError,
-    isError: isPackageWorkflowError,
-    isLoading: isPackageWorkflowLoading,
-  } = useQuery({
-    queryKey: ["package-workflows", dateRange.fromDate, dateRange.toDate],
-    queryFn: () => getPackageWorkflows(dateRange),
-    enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
-    refetchInterval: 15000,
-    retry: 1,
-  });
-  const {
-    data: packages = [],
-    error: packagesError,
-    isError: isPackagesError,
-    isLoading: isPackagesLoading,
-  } = useQuery({
-    queryKey: ["packages", dateRange.fromDate, dateRange.toDate],
-    queryFn: () => getPackages(dateRange),
-    enabled: activeScreen === "verify" && Boolean(dateRange.fromDate && dateRange.toDate),
-    refetchInterval: 15000,
-    retry: 1,
-  });
-
-  const verifyQueue = useMemo(() => buildVerifyPrescriptionQueue(
-    verifyFirstPage
-      ? [verifyFirstPage, ...(verifyBackgroundPages ?? [])]
-      : [],
-  ), [verifyBackgroundPages, verifyFirstPage]);
-  const verifyBackgroundStatus: "loading" | "complete" | "error" = isVerifyBackgroundFetching
-    ? "loading"
-    : isVerifyBackgroundError
-      ? "error"
-      : verifyFirstPage && (verifyApiTotalPages <= 1 || verifyBackgroundPages)
-        ? "complete"
-        : "loading";
+  const realtime = useRealtimeQueue(dateRange);
+  const datasetRef = useRef(realtime.datasetId);
+  useEffect(() => { datasetRef.current = realtime.datasetId; }, [realtime.datasetId]);
+  const syncRealtime = realtime.sync;
+  const packageWorkflows = realtime.workflows;
+  const packages = realtime.packages;
+  const verifyQueue = useMemo(() => mapVerifyPatientsToQueue(realtime.patients,
+    new Set(realtime.patients.map(p => p.PATIENTID)).size), [realtime.patients]);
+  const verifyBackgroundStatus = realtime.backgroundStatus;
   const patients = useMemo(() => {
     return mergeVerifyQueueWithPackageWorkflow(verifyQueue?.patients ?? [], packageWorkflows, packages);
   }, [packageWorkflows, packages, verifyQueue?.patients]);
@@ -209,13 +175,16 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     });
     return next;
   }, [patients]);
-  const isCurrentQueueLoading = activeTab === "verify" || activeTab === "all"
-    ? isVerifyLoading
-    : isPackageWorkflowLoading || isPackagesLoading;
-  const showVerifyError = activeTab === "verify" && (isVerifyApiError || isPackageWorkflowError || isPackagesError);
+  const isCurrentQueueLoading = realtime.loading;
+  const showVerifyError = Boolean(realtime.error && !patients.length && !realtime.loading);
 
   const selectedPatient = selectedId ? patients.find((patient) => patient.id === selectedId) : undefined;
   const selectedPrescription = selectedPatient?.prescriptions?.find((prescription) => prescription.id === selectedPrescriptionId);
+  const currentVerifyWorkflow = packageWorkflows.find(w => w.WORKFLOW_ID === selectedVerifyAccess?.workflowId);
+  const sameVerifyDataset = selectedVerifyAccess?.datasetId === realtime.datasetId;
+  const verifyLeaseValid = Boolean(sameVerifyDataset && currentVerifyWorkflow?.VERIFY_LOCK.IS_LOCKED && currentVerifyWorkflow.VERIFY_LOCK.SESSION_ID === selectedVerifyAccess?.sessionId);
+  const verifyLeaseLost = Boolean(selectedVerifyAccess?.lockToken && !selectedVerifyAccess.isLoading && currentVerifyWorkflow && !verifyLeaseValid);
+  const verifySourceChanged = Boolean(selectedVerifyAccess?.sourceRevision && selectedPrescription?.sourceRevision !== selectedVerifyAccess.sourceRevision);
   const selectedPatientForPanel = selectedPatient && selectedPrescription
     ? {
         ...selectedPatient,
@@ -245,35 +214,86 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           : "verify";
 
   useEffect(() => {
-    if (!selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken || selectedVerifyAccess.isReadOnly) return;
+    if (!sameVerifyDataset || !realtime.connected || !selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken || selectedVerifyAccess.isReadOnly) return;
     const { workflowId, lockToken, sessionId } = selectedVerifyAccess;
     const timer = window.setInterval(() => {
       void heartbeatVerifyLock(workflowId, { lockToken, sessionId })
-        .then(() => queryClient.invalidateQueries({ queryKey: ["package-workflows"] }))
+        .then(() => syncRealtime())
         .catch((error) => {
-          setSelectedVerifyAccess((current) => current ? { ...current, lockToken: null, isReadOnly: true } : current);
-          toast.error(`ล็อก Verify หมดอายุ: ${readQueryError(error)}`);
+          if (error instanceof ApiClientError && [403,404,409].includes(error.status)) {
+            setSelectedVerifyAccess((current) => current?.workflowId === workflowId && current.lockToken === lockToken
+              ? { ...current, lockToken: null, isReadOnly: true } : current);
+            toast.error(`เสียสิทธิ์ล็อก Verify: ${readQueryError(error)}`);
+          } else {
+            // A network failure is not evidence that the server released the lease.
+            // Keep unsaved text; the sync connection/expiry gates further actions.
+            toast.error("ต่ออายุล็อกไม่สำเร็จ กำลังตรวจการเชื่อมต่อ");
+            void syncRealtime();
+          }
         });
     }, 30000);
 
     return () => window.clearInterval(timer);
-  }, [queryClient, selectedVerifyAccess]);
+  }, [syncRealtime, selectedVerifyAccess, sameVerifyDataset, realtime.connected]);
+
+  function workspaceHref(
+    screen: WorkspaceScreen = activeScreen,
+    tab: QueueStage = activeTab,
+    range: WorkspaceDateRange = dateRange,
+    popup: WorkspacePopupTarget | null = null,
+  ) {
+    return buildWorkspaceHref({
+      screen,
+      tab,
+      fromDate: range.fromDate,
+      toDate: range.toDate,
+      popup,
+    });
+  }
+
+  function pushPopupUrl(popup: WorkspacePopupTarget) {
+    panelOpenedByAppRef.current = true;
+    suppressMissingPopupRef.current = true;
+    closingPopupRef.current = false;
+    router.push(workspaceHref("verify", activeTab, dateRange, popup), { scroll: false });
+  }
+
+  function replaceWithoutPopup() {
+    panelOpenedByAppRef.current = false;
+    suppressMissingPopupRef.current = false;
+    closingPopupRef.current = true;
+    router.replace(workspaceHref(activeScreen, activeTab, dateRange), { scroll: false });
+  }
 
   function selectTab(tabId: QueueStage) {
-    setActiveTab(tabId);
     setVerifyPage(1);
     closeSelectedItem();
+    panelOpenedByAppRef.current = false;
+    closingPopupRef.current = true;
+    router.push(workspaceHref("verify", tabId), { scroll: false });
   }
 
   function selectScreen(screen: WorkspaceScreen) {
-    setActiveScreen(screen);
     closeSelectedItem();
+    panelOpenedByAppRef.current = false;
+    closingPopupRef.current = true;
+    router.push(workspaceHref(screen, "verify"), { scroll: false });
   }
 
-  function selectQueueItem(id: string, prescriptionId?: string) {
-    const canReuseVerifyAccess = selectedPatient?.id === id && Boolean(selectedVerifyAccess?.lockToken);
+  function selectQueueItem(id: string, prescriptionId?: string, source: "ui" | "url" = "ui") {
+    const candidate = patients.find(patient => patient.id === id);
+    if (candidate?.stage === "verify" && !realtime.connected) {
+      toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุดก่อนเปิด Verify"); return;
+    }
+    if (candidate?.stage === "verify" && candidate.verifyLock?.isLocked && candidate.verifyLock.sessionId !== getVerifySessionId()) {
+      toast.error(`VN นี้กำลังใช้งานโดย ${candidate.verifyLock.ownerName ?? "ผู้ใช้อื่น"}`); return;
+    }
+    const canReuseVerifyAccess = selectedPatient?.id === id && Boolean(selectedVerifyAccess?.lockToken) && verifyLeaseValid;
+    const canOpenPopup = candidate?.stage === "verify" || Boolean(candidate && isPackagePopupStage(candidate.stage));
+    if (source === "ui" && prescriptionId && canOpenPopup) suppressMissingPopupRef.current = true;
+    selectedStageAtOpenRef.current = candidate?.stage ?? null;
     verifyAccessRequestRef.current += 1;
-    if (!canReuseVerifyAccess && selectedVerifyAccess?.workflowId && selectedVerifyAccess.lockToken) {
+    if (!canReuseVerifyAccess && sameVerifyDataset && selectedVerifyAccess?.workflowId && selectedVerifyAccess.lockToken) {
       void releaseVerifyLock(selectedVerifyAccess.workflowId, {
         lockToken: selectedVerifyAccess.lockToken,
         sessionId: selectedVerifyAccess.sessionId,
@@ -283,9 +303,18 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     setSelectedPrescriptionId(prescriptionId ?? null);
     const patient = patients.find((candidate) => candidate.id === id);
     if (patient?.stage === "verify" && prescriptionId) {
-      if (!canReuseVerifyAccess) void prepareVerifyAccess(patient);
+      if (!canReuseVerifyAccess) {
+        void prepareVerifyAccess(patient, prescriptionId, source);
+      } else if (source === "ui" && selectedVerifyAccess?.workflowId) {
+        const prescription = patient.prescriptions?.find((item) => item.id === prescriptionId);
+        if (prescription) pushPopupUrl({ kind: "workflow", id: selectedVerifyAccess.workflowId, pn: prescription.pn });
+      }
     } else {
       setSelectedVerifyAccess(null);
+      if (source === "ui" && prescriptionId && patient?.packageId && isPackagePopupStage(patient.stage)) {
+        const prescription = patient.prescriptions?.find((item) => item.id === prescriptionId);
+        if (prescription) pushPopupUrl({ kind: "package", id: patient.packageId, pn: prescription.pn });
+      }
     }
   }
 
@@ -295,17 +324,39 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     setSelectedId(null);
     setSelectedPrescriptionId(null);
     setSelectedVerifyAccess(null);
-    if (access?.workflowId && access.lockToken) {
+    selectedStageAtOpenRef.current = null;
+    if (access?.datasetId === realtime.datasetId && access?.workflowId && access.lockToken) {
       void releaseVerifyLock(access.workflowId, { lockToken: access.lockToken, sessionId: access.sessionId })
         .then(() => refreshPackageData())
         .catch(() => undefined);
     }
   }
 
+  function closeSelectedPanel() {
+    const hasPopupInUrl = Boolean(navigation.popup);
+    closeSelectedItem();
+    navigationClosePendingRef.current = false;
+    suppressMissingPopupRef.current = false;
+    closingPopupRef.current = true;
+    restoredPopupRef.current = null;
+    if (!hasPopupInUrl) {
+      if (lastPopupRef.current) replaceWithoutPopup();
+      return;
+    }
+    if (popupCloseMode(panelOpenedByAppRef.current) === "back") {
+      panelOpenedByAppRef.current = false;
+      router.back();
+      return;
+    }
+    replaceWithoutPopup();
+  }
+
   function updateDateRange(nextDateRange: WorkspaceDateRange) {
-    setDateRange(nextDateRange);
     setVerifyPage(1);
     closeSelectedItem();
+    panelOpenedByAppRef.current = false;
+    closingPopupRef.current = true;
+    router.replace(workspaceHref(activeScreen, activeTab, nextDateRange), { scroll: false });
   }
 
   function updateSearch(value: string) {
@@ -314,27 +365,36 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function refreshPackageData() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
-      queryClient.invalidateQueries({ queryKey: ["packages"] }),
-      queryClient.invalidateQueries({ queryKey: ["package-baskets"] }),
-      queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
-    ]);
+    await realtime.sync();
   }
 
-  async function prepareVerifyAccess(patient: PatientQueueItem) {
+  async function prepareVerifyAccess(patient: PatientQueueItem, prescriptionId: string, source: "ui" | "url") {
     const requestId = ++verifyAccessRequestRef.current;
     const sessionId = getVerifySessionId();
+    const datasetId = realtime.datasetId;
+    const sourceRevision = patient.prescriptions?.find(p => p.id === prescriptionId)?.sourceRevision;
     if (!patient.date) {
-      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: false });
+      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, datasetId, sourceRevision, noteDraft: patient.verifyNoteDraft, noteUpdatedAt: patient.verifyNoteUpdatedAt, isReadOnly: true, isLoading: false });
+      if (source === "ui" && patient.workflowId) {
+        const prescription = patient.prescriptions?.find((item) => item.id === prescriptionId);
+        if (prescription) pushPopupUrl({ kind: "workflow", id: patient.workflowId, pn: prescription.pn });
+      } else if (source === "ui") {
+        suppressMissingPopupRef.current = false;
+      }
       return;
     }
     if (patient.activePackageId) {
-      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: false, ownerName: "รอรับแพ็กเกจยารอบปัจจุบัน" });
+      setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, datasetId, sourceRevision, noteDraft: patient.verifyNoteDraft, noteUpdatedAt: patient.verifyNoteUpdatedAt, isReadOnly: true, isLoading: false, ownerName: "รอรับแพ็กเกจยารอบปัจจุบัน" });
+      if (source === "ui" && patient.workflowId) {
+        const prescription = patient.prescriptions?.find((item) => item.id === prescriptionId);
+        if (prescription) pushPopupUrl({ kind: "workflow", id: patient.workflowId, pn: prescription.pn });
+      } else if (source === "ui") {
+        suppressMissingPopupRef.current = false;
+      }
       return;
     }
 
-    setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, isReadOnly: true, isLoading: true });
+    setSelectedVerifyAccess({ workflowId: patient.workflowId ?? null, lockToken: null, sessionId, datasetId, sourceRevision, noteDraft: patient.verifyNoteDraft, noteUpdatedAt: patient.verifyNoteUpdatedAt, isReadOnly: true, isLoading: true });
     try {
       const workflow = await claimVerifyLock({
         visitDate: patient.date.slice(0, 10),
@@ -343,6 +403,8 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         ownerName: "Pharmacist",
         workstationCode: "VERIFY-WEB",
       });
+      // Never send a lease token from Local to a newly selected Live database.
+      if (datasetRef.current !== datasetId) return;
       if (verifyAccessRequestRef.current !== requestId) {
         if (workflow.VERIFY_LOCK.LOCK_TOKEN) {
           await releaseVerifyLock(workflow.WORKFLOW_ID, {
@@ -356,10 +418,18 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         workflowId: workflow.WORKFLOW_ID,
         lockToken: workflow.VERIFY_LOCK.LOCK_TOKEN,
         sessionId,
+        datasetId,
+        sourceRevision,
+        noteDraft: workflow.VERIFY_NOTE_DRAFT,
+        noteUpdatedAt: workflow.VERIFY_NOTE_UPDATED_AT,
         isReadOnly: !workflow.VERIFY_LOCK.LOCK_TOKEN,
         isLoading: false,
         ownerName: workflow.VERIFY_LOCK.OWNER_NAME,
       });
+      if (source === "ui") {
+        const prescription = patient.prescriptions?.find((item) => item.id === prescriptionId);
+        if (prescription) pushPopupUrl({ kind: "workflow", id: workflow.WORKFLOW_ID, pn: prescription.pn });
+      }
       await refreshPackageData();
     } catch (error) {
       if (verifyAccessRequestRef.current !== requestId) return;
@@ -367,15 +437,25 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         workflowId: patient.workflowId ?? null,
         lockToken: null,
         sessionId,
+        datasetId,
+        sourceRevision,
+        noteDraft: patient.verifyNoteDraft,
+        noteUpdatedAt: patient.verifyNoteUpdatedAt,
         isReadOnly: true,
         isLoading: false,
         ownerName: patient.verifyLock?.ownerName,
       });
-      toast.error(`เปิดแบบอ่านอย่างเดียว: ${readQueryError(error)}`);
+      setSelectedId(null);
+      setSelectedPrescriptionId(null);
+      suppressMissingPopupRef.current = false;
+      if (source === "url") replaceWithoutPopup();
+      toast.error(`เปิด PatientPanel ไม่สำเร็จ: ${readQueryError(error)}`);
     }
   }
 
   async function verifySelectedPrescription(input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) {
+    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุดก่อน Verify"); return; }
+    if (!verifyLeaseValid || verifySourceChanged) { toast.error("ข้อมูลหรือสิทธิ์ล็อกเปลี่ยนแล้ว กรุณาปิดและเปิด PN เพื่อตรวจใหม่"); return; }
     if (!selectedPrescription || !selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken) return;
     const patient = selectedPatientForPanel;
     if (!patient?.date) return;
@@ -385,13 +465,14 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
         .filter((drug) => selectedDrugIds.has(drug.id) && drug.MEDICINECODE && drug.itemSequence)
         .map((drug) => ({ medicineCode: drug.MEDICINECODE!, itemSeq: drug.itemSequence! }));
       const result = await verifyPackagePrescription(selectedVerifyAccess.workflowId, {
+        expectedSourceRevision: selectedPrescription.sourceRevision ?? "",
         lockToken: selectedVerifyAccess.lockToken,
         sessionId: selectedVerifyAccess.sessionId,
         prescriptionNumber: selectedPrescription.pn,
         mode: input.mode,
         packagePriority: input.mode === "URGENT" ? "URGENT" : "NORMAL",
         selectedItems: input.mode === "URGENT" ? selectedItems : undefined,
-        note: input.note || undefined,
+        note: input.note,
         actorName: "Pharmacist",
         idempotencyKey: createIdempotencyKey(),
       });
@@ -401,13 +482,47 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       } else {
         toast.success(`PN ${selectedPrescription.pn} Verify แล้ว รออีก ${result.WAITING_PRESCRIPTIONS.length} PN`);
       }
-      closeSelectedItem();
+      closeSelectedPanel();
     } catch (error) {
       toast.error(readQueryError(error));
+      await realtime.sync();
     }
   }
 
+  async function saveSelectedVerifyNote(note: string) {
+    const access = selectedVerifyAccess;
+    if (!access?.workflowId || !access.lockToken || access.datasetId !== realtime.datasetId) {
+      throw new ApiClientError("สิทธิ์ล็อก Verify เปลี่ยนแล้ว", 409);
+    }
+    if (!realtime.connected || !verifyLeaseValid) {
+      throw new ApiClientError("ขาดการเชื่อมต่อหรือสิทธิ์ล็อก Verify หมดอายุ", 409);
+    }
+    return saveVerifyNote(access.workflowId, {
+      lockToken: access.lockToken,
+      sessionId: access.sessionId,
+      note,
+      actorName: "Pharmacist",
+    });
+  }
+
+  function handleVerifyNoteAccessLost() {
+    setSelectedVerifyAccess((current) => current
+      ? { ...current, lockToken: null, isReadOnly: true }
+      : current);
+    void realtime.sync();
+  }
+
+  function handlePatientPanelCloseBlocked() {
+    navigationClosePendingRef.current = false;
+    const popup = lastPopupRef.current;
+    if (navigation.popup || !popup) return;
+    panelOpenedByAppRef.current = false;
+    closingPopupRef.current = false;
+    router.replace(workspaceHref("verify", activeTab, dateRange, popup), { scroll: false });
+  }
+
   async function runPrimaryAction(patient: PatientQueueItem) {
+    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     try {
       if (patient.stage === "verify") {
         const prescription = patient.prescriptions?.find((item) => item.verifyStatus !== "PACKAGED") ?? patient.prescriptions?.[0];
@@ -424,6 +539,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function runPendingAction(patient: PatientQueueItem) {
+    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     try {
       if (patient.stage === "pending" && patient.workflowId) {
         await returnPackageWorkflowToVerify(patient.workflowId, "Pharmacist");
@@ -443,6 +559,118 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     }
   }
 
+  const reconcilePopupNavigation = useEffectEvent(() => {
+    const popup = navigation.popup;
+
+    if (activeScreen !== "verify") {
+      restoredPopupRef.current = null;
+      invalidPopupRef.current = null;
+      panelOpenedByAppRef.current = false;
+      closingPopupRef.current = false;
+      navigationClosePendingRef.current = false;
+      if (selectedPrescriptionId && !suppressMissingPopupRef.current) closeSelectedItem();
+      return;
+    }
+
+    if (!popup) {
+      restoredPopupRef.current = null;
+      invalidPopupRef.current = null;
+      closingPopupRef.current = false;
+      if (suppressMissingPopupRef.current) return;
+      panelOpenedByAppRef.current = false;
+      if (selectedPrescriptionId && selectedPatient?.stage === "verify" && selectedVerifyAccess && !selectedVerifyAccess.isLoading) {
+        if (!navigationClosePendingRef.current) {
+          navigationClosePendingRef.current = true;
+          setPatientPanelCloseRequest((current) => current + 1);
+        }
+      } else if (selectedPrescriptionId) {
+        navigationClosePendingRef.current = false;
+        closeSelectedItem();
+      }
+      return;
+    }
+
+    if (closingPopupRef.current) return;
+    lastPopupRef.current = popup;
+    navigationClosePendingRef.current = false;
+    suppressMissingPopupRef.current = false;
+    const popupKey = `${popup.kind}:${popup.id}:${popup.pn}`;
+    const candidate = patients.find((patient) => (
+      popup.kind === "workflow"
+        ? sameIdentifier(patient.workflowId, popup.id) && patient.stage === "verify"
+        : sameIdentifier(patient.packageId, popup.id) && isPackagePopupStage(patient.stage)
+    ));
+    const prescription = candidate?.prescriptions?.find((item) => item.pn === popup.pn);
+    const currentMatches = Boolean(
+      selectedPatient
+      && selectedPrescription
+      && selectedPrescription.pn === popup.pn
+      && (popup.kind === "workflow"
+        ? sameIdentifier(selectedPatient.workflowId, popup.id)
+        : sameIdentifier(selectedPatient.packageId, popup.id)),
+    );
+
+    if (currentMatches) {
+      if (selectedStageAtOpenRef.current && selectedPatient?.stage !== selectedStageAtOpenRef.current) {
+        if (invalidPopupRef.current !== popupKey) {
+          invalidPopupRef.current = popupKey;
+          toast.info(`VN ${selectedPatient?.vn ?? "นี้"} ถูกส่งไปขั้น ${selectedPatient?.stage ?? "ถัดไป"} แล้ว`);
+          closeSelectedItem();
+          replaceWithoutPopup();
+        }
+        return;
+      }
+      restoredPopupRef.current = popupKey;
+      invalidPopupRef.current = null;
+      return;
+    }
+
+    if (candidate?.stage === "verify" && candidate.verifyLock?.isLocked && candidate.verifyLock.sessionId !== getVerifySessionId()) {
+      if (invalidPopupRef.current !== popupKey) {
+        invalidPopupRef.current = popupKey;
+        toast.error(`VN นี้กำลังใช้งานโดย ${candidate.verifyLock.ownerName ?? "ผู้ใช้อื่น"}`);
+        closeSelectedItem();
+        replaceWithoutPopup();
+      }
+      return;
+    }
+
+    if (!candidate || !prescription) {
+      if (realtime.loading || realtime.backgroundStatus === "loading") return;
+      if (invalidPopupRef.current !== popupKey) {
+        invalidPopupRef.current = popupKey;
+        toast.error("ไม่พบ Workflow, Package หรือ PN ที่ระบุ หรือรายการถูกส่งต่อแล้ว");
+        closeSelectedItem();
+        replaceWithoutPopup();
+      }
+      return;
+    }
+
+    if (restoredPopupRef.current === popupKey || selectedVerifyAccess?.isLoading) return;
+    restoredPopupRef.current = popupKey;
+    selectedStageAtOpenRef.current = candidate.stage;
+    selectQueueItem(candidate.id, prescription.id, "url");
+  });
+
+  useEffect(() => {
+    const canonicalHref = buildWorkspaceHref({
+      screen: activeScreen,
+      tab: activeTab,
+      fromDate: dateRange.fromDate,
+      toDate: dateRange.toDate,
+      popup: activeScreen === "verify" ? navigation.popup : null,
+    });
+    const query = searchParams.toString();
+    const currentHref = `${pathname}${query ? `?${query}` : ""}`;
+    if (navigation.needsCleanup || currentHref !== canonicalHref) {
+      router.replace(canonicalHref, { scroll: false });
+    }
+  }, [activeScreen, activeTab, dateRange.fromDate, dateRange.toDate, navigation.needsCleanup, navigation.popup, pathname, router, searchParams]);
+
+  useEffect(() => {
+    reconcilePopupNavigation();
+  }, [activeScreen, navigation.popup, patients, realtime.backgroundStatus, realtime.loading, selectedPatient, selectedPrescription, selectedPrescriptionId, selectedVerifyAccess?.isLoading]);
+
   const activeItem = workspaceItems.find((item) => item.id === activeScreen) ?? workspaceItems[0];
 
   return (
@@ -456,9 +684,16 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           search={search}
           summary={summary}
           onDateRangeChange={updateDateRange}
-          onLogout={onLogout}
+          onLogout={() => { closeSelectedItem(); onLogout(); }}
           onSearch={updateSearch}
         />
+
+        <div aria-live="polite" className={cn("flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-1.5 text-xs font-semibold", realtime.connected ? "border-slate-100 bg-white text-slate-500" : "border-amber-200 bg-amber-50 text-amber-800")}>
+          <span>{realtime.loading ? "กำลังโหลดข้อมูล..." : realtime.connected ? "เชื่อมต่อแล้ว · อัปเดตเฉพาะรายการที่เปลี่ยน" : "ขาดการเชื่อมต่อ — ข้อมูลอาจไม่ล่าสุด"}{!realtime.loading && realtime.backgroundStatus === "loading" ? ` · กำลังโหลดเบื้องหลัง (${verifyQueue.totalVisits} VN)` : ""}{realtime.backgroundStatus === "error" ? " · โหลดเบื้องหลังไม่สำเร็จ กรุณาลองใหม่" : ""}</span>
+          <button className="text-blue-600 underline" onClick={() => void realtime.reload()} type="button">รีเฟรชข้อมูลทั้งหมด</button>
+        </div>
+        {verifyLeaseLost ? <div role="alert" className="bg-amber-50 px-5 py-2 text-sm text-amber-800">ล็อก Verify ถูกปล่อยหรือหมดอายุแล้ว กรุณาเลือก PN เพื่อขอล็อกใหม่</div> : null}
+        {selectedId && !selectedPatient && !realtime.loading ? <div role="status" className="bg-blue-50 px-5 py-2 text-sm text-blue-800">รายการที่เลือกถูกส่งต่อหรือไม่อยู่ในคิวนี้แล้ว</div> : null}
 
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeScreen === "verify" ? (
@@ -485,7 +720,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
 
               <section className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
                 {showVerifyError ? (
-                  <VerifyApiErrorState error={verifyApiError ?? packageWorkflowError ?? packagesError} onRetry={() => void Promise.all([refetchVerify(), refreshPackageData()])} />
+                  <VerifyApiErrorState error={realtime.error} onRetry={() => void realtime.reload()} />
                 ) : (
                   <>
                     <div className="min-h-0 flex-1 overflow-hidden">
@@ -512,12 +747,12 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                     {filteredPatients.length > 0 ? (
                       <VerifyPagination
                         backgroundStatus={verifyBackgroundStatus}
-                        isFetching={isVerifyFetching && (activeTab === "verify" || activeTab === "all")}
+                        isFetching={realtime.syncing}
                         page={currentPage}
                         totalItems={filteredPatients.length}
                         totalPages={totalPages}
                         onPageChange={setVerifyPage}
-                        onRetryBackground={() => void refetchVerifyBackground()}
+                        onRetryBackground={() => void realtime.reload()}
                       />
                     ) : null}
                   </>
@@ -528,38 +763,57 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
 
           {activeScreen === "matching" || activeScreen === "checking" ? (
             <MatchingCheckingScreen
+              packages={packages}
+              isLoading={realtime.loading}
+              connected={realtime.connected}
+              onRefresh={realtime.sync}
               search={search}
               stage={activeScreen}
               onOpenChecking={() => selectScreen("checking")}
             />
           ) : null}
-          {activeScreen === "dispensing" ? <DispensingQueueScreen search={search} /> : null}
+          {activeScreen === "dispensing" ? <DispensingQueueScreen search={search} packages={packages} isLoading={realtime.loading} connected={realtime.connected} onRefresh={realtime.sync} /> : null}
           {activeScreen === "dashboard" ? <OperationsDashboard /> : null}
           {activeScreen === "me" ? <MedicationErrorScreen search={search} /> : null}
         </div>
 
         {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "checking" ? (
-          <CheckingCheckoutPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
+          <CheckingCheckoutPopup patient={selectedPatientForPanel} onClose={closeSelectedPanel} />
         ) : null}
         {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "dispensing" ? (
-          <DispensingPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
+          <DispensingPopup patient={selectedPatientForPanel} onClose={closeSelectedPanel} />
         ) : null}
         {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "matching" ? (
-          <MatchingPopup patient={selectedPatientForPanel} onClose={closeSelectedItem} />
+          <MatchingPopup patient={selectedPatientForPanel} onClose={closeSelectedPanel} />
         ) : null}
         {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "picking" ? (
           <PickingPrescriptionPopup
             patient={selectedPatientForPanel}
             prescriptionNumber={selectedPrescription.pn}
-            onClose={closeSelectedItem}
+            onClose={closeSelectedPanel}
           />
         ) : null}
-        {activeScreen === "verify" && selectedPatient?.stage === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
+        {activeScreen === "verify" && selectedVerifyAccess && !selectedVerifyAccess.isLoading && selectedPatient?.stage === "verify" && selectedPatientForPanel && selectedPanel === "verify" && (!selectedPatient?.prescriptions?.length || selectedPrescription) ? (
           <PatientPanel
             patient={selectedPatientForPanel}
             pn={selectedPrescription?.pn}
-            verifyAccess={selectedVerifyAccess}
-            onClose={closeSelectedItem}
+            verifyAccess={{...selectedVerifyAccess,
+              noteDraft: currentVerifyWorkflow ? currentVerifyWorkflow.VERIFY_NOTE_DRAFT : selectedVerifyAccess.noteDraft ?? null,
+              noteUpdatedAt: currentVerifyWorkflow ? currentVerifyWorkflow.VERIFY_NOTE_UPDATED_AT : selectedVerifyAccess.noteUpdatedAt ?? null,
+              isConnected: realtime.connected,
+              isReadOnly:selectedVerifyAccess.isReadOnly || !selectedVerifyAccess.lockToken || !verifyLeaseValid || !realtime.connected || verifySourceChanged,
+              blockedReason: !realtime.connected
+                ? "ขาดการเชื่อมต่อ — หยุดทำรายการชั่วคราวจนกว่าจะได้รับข้อมูลล่าสุด"
+                : verifySourceChanged
+                  ? "ข้อมูลใบยาหรือคำเตือนเปลี่ยนแล้ว กรุณาปิดและเปิด PN เพื่อตรวจข้อมูลล่าสุดก่อน Verify"
+                  : !selectedVerifyAccess.lockToken || !verifyLeaseValid
+                    ? "สิทธิ์ล็อก Verify ถูกปล่อยหรือหมดอายุแล้ว NOTE ที่ยังไม่บันทึกจะคงอยู่จนกว่าจะปิด Panel"
+                    : undefined}}
+            onClose={closeSelectedPanel}
+            navigationCloseRequest={patientPanelCloseRequest}
+            onCloseBlocked={handlePatientPanelCloseBlocked}
+            onNoteAccessLost={handleVerifyNoteAccessLost}
+            onSaveNote={saveSelectedVerifyNote}
             onVerify={verifySelectedPrescription}
           />
         ) : null}
@@ -604,7 +858,7 @@ function VerifyPagination({
             โหลดข้อมูลเบื้องหลังไม่สำเร็จ · ลองใหม่
           </button>
         ) : null}
-        {isFetching ? <span className="ml-2 text-blue-600">กำลังอัปเดตหน้าแรก...</span> : null}
+        {isFetching ? <span className="ml-2 text-blue-600">กำลังอัปเดตเฉพาะข้อมูลที่เปลี่ยน...</span> : null}
       </div>
       <div className="flex items-center gap-2">
         <Button aria-label="หน้าก่อนหน้า" className="h-9 w-9 rounded-xl" disabled={page <= 1} onClick={() => onPageChange(page - 1)} size="icon" variant="outline">
@@ -638,6 +892,14 @@ function VerifyApiErrorState({ error, onRetry }: { error: unknown; onRetry: () =
 
 function readQueryError(error: unknown) {
   return error instanceof Error ? error.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
+}
+
+function isPackagePopupStage(stage: PatientQueueItem["stage"]) {
+  return stage === "picking" || stage === "matching" || stage === "checking" || stage === "dispensing";
+}
+
+function sameIdentifier(value: string | undefined, expected: string) {
+  return value?.toLowerCase() === expected.toLowerCase();
 }
 
 function createEmptyQueueSummary(): QueueSummary {

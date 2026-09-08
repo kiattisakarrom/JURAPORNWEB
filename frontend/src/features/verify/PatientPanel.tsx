@@ -1,11 +1,13 @@
 "use client";
 
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Pill, Printer, RefreshCw, Search, UserRound, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ApiClientError } from "@/lib/api-client";
+import type { VerifyNoteSaveResult } from "@/lib/package-workflow-api";
 import { getPatientProfile } from "@/lib/patient-profile-api";
 import { getMachineStockCheck } from "@/lib/stock-check-api";
 import { cn } from "@/lib/utils";
@@ -29,12 +31,17 @@ const hadChecklistItems = [
 ] as const;
 
 type HadChecklistItemId = (typeof hadChecklistItems)[number]["id"];
+type NoteSaveStatus = "idle" | "saving" | "saved" | "waiting" | "error";
 
 export function PatientPanel({
   patient,
   pn,
   verifyAccess,
   onClose,
+  navigationCloseRequest = 0,
+  onCloseBlocked,
+  onNoteAccessLost,
+  onSaveNote,
   onVerify,
 }: {
   patient: PatientQueueItem;
@@ -46,8 +53,16 @@ export function PatientPanel({
     isReadOnly: boolean;
     isLoading: boolean;
     ownerName?: string | null;
+    blockedReason?: string;
+    noteDraft?: string | null;
+    noteUpdatedAt?: string | null;
+    isConnected: boolean;
   } | null;
   onClose: () => void;
+  navigationCloseRequest?: number;
+  onCloseBlocked?: () => void;
+  onNoteAccessLost: () => void;
+  onSaveNote: (note: string) => Promise<VerifyNoteSaveResult>;
   onVerify: (input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) => Promise<void>;
 }) {
   const [hasRequestedStockCheck, setHasRequestedStockCheck] = useState(false);
@@ -63,7 +78,25 @@ export function PatientPanel({
   const [selectedPackageDrugIds, setSelectedPackageDrugIds] = useState<Set<string>>(() => new Set());
   const [isUrgentPackage, setIsUrgentPackage] = useState(false);
   const [isSubmittingVerify, setIsSubmittingVerify] = useState(false);
-  const [note, setNote] = useState("");
+  const initialNote = verifyAccess?.noteDraft ?? "";
+  const [note, setNote] = useState(initialNote);
+  const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>(initialNote ? "saved" : "idle");
+  const [noteSaveError, setNoteSaveError] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const [showDiscardNoteConfirm, setShowDiscardNoteConfirm] = useState(false);
+  const noteRef = useRef(initialNote);
+  const lastSavedNoteRef = useRef(initialNote);
+  const noteDirtyRef = useRef(false);
+  const noteDebounceRef = useRef<number | null>(null);
+  const noteSaveLoopRef = useRef<Promise<boolean> | null>(null);
+  const noteSaveRequestedRef = useRef(false);
+  const noteWorkflowIdRef = useRef(verifyAccess?.workflowId ?? null);
+  const lastServerNoteUpdatedAtRef = useRef(verifyAccess?.noteUpdatedAt ?? null);
+  const mountedRef = useRef(true);
+  const verifyAccessRef = useRef(verifyAccess);
+  const onSaveNoteRef = useRef(onSaveNote);
+  const onNoteAccessLostRef = useRef(onNoteAccessLost);
+  const lastNavigationCloseRequestRef = useRef(navigationCloseRequest);
 
   const { data: profile } = useQuery({
     queryKey: ["patient-profile-inline", patient.id],
@@ -112,6 +145,188 @@ export function PatientPanel({
     };
   }, []);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (noteDebounceRef.current !== null) window.clearTimeout(noteDebounceRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    verifyAccessRef.current = verifyAccess;
+    onSaveNoteRef.current = onSaveNote;
+    onNoteAccessLostRef.current = onNoteAccessLost;
+  }, [onNoteAccessLost, onSaveNote, verifyAccess]);
+
+  useEffect(() => {
+    const workflowId = verifyAccess?.workflowId ?? null;
+    if (noteWorkflowIdRef.current === workflowId) return;
+    const nextNote = verifyAccess?.noteDraft ?? "";
+    noteWorkflowIdRef.current = workflowId;
+    lastServerNoteUpdatedAtRef.current = verifyAccess?.noteUpdatedAt ?? null;
+    noteRef.current = nextNote;
+    lastSavedNoteRef.current = nextNote;
+    noteDirtyRef.current = false;
+    noteSaveRequestedRef.current = false;
+    setNote(nextNote);
+    setNoteSaveError(null);
+    setNoteSaveStatus(nextNote ? "saved" : "idle");
+  }, [verifyAccess?.noteDraft, verifyAccess?.noteUpdatedAt, verifyAccess?.workflowId]);
+
+  useEffect(() => {
+    if (noteDirtyRef.current || noteSaveLoopRef.current) return;
+    const incomingUpdatedAt = verifyAccess?.noteUpdatedAt ?? null;
+    const knownUpdatedAt = lastServerNoteUpdatedAtRef.current;
+    if (knownUpdatedAt && (!incomingUpdatedAt || incomingUpdatedAt < knownUpdatedAt)) return;
+    const incomingNote = verifyAccess?.noteDraft ?? "";
+    lastServerNoteUpdatedAtRef.current = incomingUpdatedAt;
+    lastSavedNoteRef.current = incomingNote;
+    noteRef.current = incomingNote;
+    setNote(incomingNote);
+    setNoteSaveStatus(incomingNote ? "saved" : "idle");
+  }, [verifyAccess?.noteDraft, verifyAccess?.noteUpdatedAt]);
+
+  const runNoteSaveLoop = useCallback((): Promise<boolean> => {
+    noteSaveRequestedRef.current = true;
+    if (noteSaveLoopRef.current) return noteSaveLoopRef.current;
+
+    const loop = async () => {
+      while (noteSaveRequestedRef.current) {
+        noteSaveRequestedRef.current = false;
+        if (!noteDirtyRef.current) continue;
+
+        const access = verifyAccessRef.current;
+        if (!access?.lockToken || access.isReadOnly || !access.isConnected) {
+          if (mountedRef.current) {
+            setNoteSaveStatus(access?.isConnected === false ? "waiting" : "error");
+            setNoteSaveError(access?.isConnected === false
+              ? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"
+              : "สิทธิ์ล็อกเปลี่ยนแล้ว ไม่สามารถบันทึก NOTE ได้");
+          }
+          return false;
+        }
+
+        const valueToSave = noteRef.current;
+        if (mountedRef.current) {
+          setNoteSaveStatus("saving");
+          setNoteSaveError(null);
+        }
+        try {
+          const saved = await onSaveNoteRef.current(valueToSave);
+          const savedNote = saved.VERIFY_NOTE_DRAFT ?? "";
+          lastSavedNoteRef.current = savedNote;
+          lastServerNoteUpdatedAtRef.current = saved.VERIFY_NOTE_UPDATED_AT;
+          if (noteRef.current === valueToSave) {
+            noteDirtyRef.current = noteRef.current !== savedNote;
+            if (mountedRef.current) setNoteSaveStatus(noteDirtyRef.current ? "idle" : "saved");
+          } else {
+            noteDirtyRef.current = true;
+            noteSaveRequestedRef.current = true;
+          }
+        } catch (error) {
+          const accessLost = error instanceof ApiClientError && [403, 404, 409].includes(error.status);
+          if (accessLost) onNoteAccessLostRef.current();
+          const isWaiting = !navigator.onLine || verifyAccessRef.current?.isConnected === false;
+          if (mountedRef.current) {
+            setNoteSaveStatus(isWaiting ? "waiting" : "error");
+            setNoteSaveError(isWaiting
+              ? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"
+              : accessLost
+                ? "สิทธิ์ล็อกเปลี่ยนแล้ว ไม่สามารถบันทึก NOTE ได้"
+                : "บันทึกไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ");
+          }
+          return false;
+        }
+      }
+      return !noteDirtyRef.current;
+    };
+
+    const promise = loop().finally(() => {
+      noteSaveLoopRef.current = null;
+    });
+    noteSaveLoopRef.current = promise;
+    return promise;
+  }, []);
+
+  useEffect(() => {
+    if (verifyAccess?.isConnected && verifyAccess.lockToken && !verifyAccess.isReadOnly && noteDirtyRef.current) {
+      void runNoteSaveLoop();
+    }
+  }, [runNoteSaveLoop, verifyAccess?.isConnected, verifyAccess?.isReadOnly, verifyAccess?.lockToken]);
+
+  useEffect(() => {
+    const retryAfterReconnect = () => {
+      if (noteDirtyRef.current) void runNoteSaveLoop();
+    };
+    window.addEventListener("online", retryAfterReconnect);
+    return () => window.removeEventListener("online", retryAfterReconnect);
+  }, [runNoteSaveLoop]);
+
+  useEffect(() => {
+    if (
+      noteSaveStatus !== "error" ||
+      !noteDirtyRef.current ||
+      !verifyAccess?.isConnected ||
+      verifyAccess.isReadOnly ||
+      !verifyAccess.lockToken
+    ) return;
+    const timer = window.setTimeout(() => void runNoteSaveLoop(), 2000);
+    return () => window.clearTimeout(timer);
+  }, [noteSaveStatus, runNoteSaveLoop, verifyAccess?.isConnected, verifyAccess?.isReadOnly, verifyAccess?.lockToken]);
+
+  function scheduleNoteSave() {
+    if (noteDebounceRef.current !== null) window.clearTimeout(noteDebounceRef.current);
+    noteDebounceRef.current = window.setTimeout(() => {
+      noteDebounceRef.current = null;
+      void runNoteSaveLoop();
+    }, 800);
+  }
+
+  async function flushNote(): Promise<boolean> {
+    if (noteDebounceRef.current !== null) {
+      window.clearTimeout(noteDebounceRef.current);
+      noteDebounceRef.current = null;
+    }
+    if (!noteDirtyRef.current && !noteSaveLoopRef.current) return true;
+    return runNoteSaveLoop();
+  }
+
+  function changeNote(value: string) {
+    noteRef.current = value;
+    noteDirtyRef.current = value !== lastSavedNoteRef.current;
+    setNote(value);
+    setNoteSaveError(null);
+    setNoteSaveStatus(noteDirtyRef.current ? "idle" : "saved");
+    if (noteDirtyRef.current) scheduleNoteSave();
+    else if (noteDebounceRef.current !== null) {
+      window.clearTimeout(noteDebounceRef.current);
+      noteDebounceRef.current = null;
+    }
+  }
+
+  async function requestClose() {
+    setIsClosing(true);
+    const saved = await flushNote();
+    if (!mountedRef.current) return;
+    setIsClosing(false);
+    if (saved) onClose();
+    else {
+      onCloseBlocked?.();
+      setShowDiscardNoteConfirm(true);
+    }
+  }
+
+  const requestNavigationClose = useEffectEvent(() => {
+    void requestClose();
+  });
+
+  useEffect(() => {
+    if (navigationCloseRequest === lastNavigationCloseRequestRef.current) return;
+    lastNavigationCloseRequestRef.current = navigationCloseRequest;
+    requestNavigationClose();
+  }, [navigationCloseRequest]);
+
   function requestStockCheck() {
     setHasRequestedStockCheck(true);
   }
@@ -133,6 +348,8 @@ export function PatientPanel({
     if (!verifyAccess?.lockToken || verifyAccess.isReadOnly || (isUrgentPackage && selectedPackageDrugIds.size === 0)) return;
     setIsSubmittingVerify(true);
     try {
+      const noteSaved = await flushNote();
+      if (!noteSaved) return;
       await onVerify({
         mode: isUrgentPackage ? "URGENT" : "NORMAL",
         selectedDrugIds: Array.from(selectedPackageDrugIds),
@@ -151,7 +368,7 @@ export function PatientPanel({
         <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
           <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
             <div className="flex items-start gap-3 sm:gap-4">
-              <Button aria-label="ปิด" className="h-10 w-10 shrink-0 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
+              <Button aria-label="ปิด" className="h-10 w-10 shrink-0 rounded-xl border-slate-200" disabled={isClosing} onClick={() => void requestClose()} size="icon" variant="outline">
                 <X className="h-5 w-5" />
               </Button>
               <div className="min-w-0 flex-1">
@@ -208,7 +425,7 @@ export function PatientPanel({
               <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-black text-blue-800">กำลังขอล็อก VN สำหรับ Verify...</div>
             ) : verifyAccess?.isReadOnly ? (
               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-black leading-6 text-amber-800">
-                เปิดแบบอ่านอย่างเดียว {patient.activePackageId ? "เนื่องจากมีแพ็กเกจยาที่กำลังดำเนินการ ต้องรอผู้ป่วยรับยารอบนี้ก่อน" : `เนื่องจาก VN ถูกล็อกโดย ${verifyAccess.ownerName ?? "ผู้ใช้อื่น"}`}
+                {verifyAccess.blockedReason ?? `เปิดแบบอ่านอย่างเดียว ${patient.activePackageId ? "เนื่องจากมีแพ็กเกจยาที่กำลังดำเนินการ ต้องรอผู้ป่วยรับยารอบนี้ก่อน" : `เนื่องจาก VN ถูกล็อกโดย ${verifyAccess.ownerName ?? "ผู้ใช้อื่น"}`}`}
               </div>
             ) : (
               <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">ล็อก VN สำหรับการ Verify แล้ว ระบบต่ออายุล็อกทุก 30 วินาที</div>
@@ -313,15 +530,21 @@ export function PatientPanel({
             </section>
 
             <section className="mt-6">
-              <label className="text-sm font-black text-slate-500" htmlFor="verify-note">บันทึก / NOTE ถึงจุด Dispensing</label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-sm font-black text-slate-500" htmlFor="verify-note">บันทึก / NOTE ถึงจุด Dispensing</label>
+                <NoteSaveIndicator error={noteSaveError} status={noteSaveStatus} />
+              </div>
               <textarea
                 className="mt-2 min-h-24 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                 id="verify-note"
-                disabled={verifyAccess?.isReadOnly}
-                onChange={(event) => setNote(event.target.value)}
+                disabled={verifyAccess?.isReadOnly || isClosing || isSubmittingVerify}
+                maxLength={1000}
+                onBlur={() => void flushNote()}
+                onChange={(event) => changeNote(event.target.value)}
                 placeholder="พิมพ์บันทึกเพิ่มเติม..."
                 value={note}
               />
+              <div className="mt-1 text-right text-xs font-bold text-slate-400">{note.length}/1,000</div>
             </section>
 
             <section className="mt-6">
@@ -430,9 +653,53 @@ export function PatientPanel({
           }}
         />
       ) : null}
+
+      {showDiscardNoteConfirm ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#0f1f3d]/45 p-4" role="alertdialog" aria-modal="true" aria-labelledby="discard-note-title">
+          <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-[0_24px_60px_rgba(15,31,61,0.32)]">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900" id="discard-note-title">NOTE ยังไม่ได้บันทึก</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">ข้อความล่าสุดยังส่งไปยังระบบไม่สำเร็จ ต้องการรอให้ระบบบันทึกอัตโนมัติ หรือปิดและทิ้งข้อความล่าสุด?</p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-2 sm:grid-cols-2">
+              <Button className="h-11 rounded-xl" onClick={() => {
+                setShowDiscardNoteConfirm(false);
+                if (verifyAccess?.isConnected) void runNoteSaveLoop();
+              }} variant="outline">รอบันทึกต่อ</Button>
+              <Button className="h-11 rounded-xl bg-rose-600 text-white hover:bg-rose-700" onClick={() => {
+                noteDirtyRef.current = false;
+                noteSaveRequestedRef.current = false;
+                setShowDiscardNoteConfirm(false);
+                onClose();
+              }}>ปิดโดยไม่บันทึก</Button>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>,
     document.body,
   );
+}
+
+function NoteSaveIndicator({ error, status }: { error: string | null; status: NoteSaveStatus }) {
+  if (status === "saving") {
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-600"><RefreshCw className="h-3.5 w-3.5 animate-spin" />กำลังบันทึก…</span>;
+  }
+  if (status === "saved") {
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />บันทึกแล้ว</span>;
+  }
+  if (status === "waiting") {
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600"><AlertTriangle className="h-3.5 w-3.5" />{error ?? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"}</span>;
+  }
+  if (status === "error") {
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-rose-600"><AlertTriangle className="h-3.5 w-3.5" />{error ?? "บันทึกไม่สำเร็จ"}</span>;
+  }
+  return <span className="text-xs font-bold text-slate-400">บันทึกอัตโนมัติ</span>;
 }
 
 function buildInlineProfile(patient: PatientQueueItem, profile?: PatientProfile) {

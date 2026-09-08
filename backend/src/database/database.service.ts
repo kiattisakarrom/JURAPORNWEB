@@ -7,9 +7,13 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as sql from 'mssql';
+import { Subject } from 'rxjs';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
+  readonly commits = new Subject<void>();
+
+  notifyChange(): void { this.commits.next(); }
   private readonly logger = new Logger(DatabaseService.name);
   private pool: sql.ConnectionPool | null = null;
 
@@ -74,6 +78,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     try {
       const result = await work(() => new sql.Request(transaction));
       await transaction.commit();
+      if (isolationLevel !== sql.ISOLATION_LEVEL.SNAPSHOT) this.notifyChange();
       return result;
     } catch (error) {
       await transaction.rollback();

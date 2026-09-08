@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
+    "test:realtime": "node --experimental-strip-types --test tests/realtime-*.test.mjs",
+    "dev": "next dev --webpack -H 0.0.0.0",
     "build": "next build",
     "vercel-build": "next build",
     "start": "next start",
+    "start:lan": "next start -H 0.0.0.0 -p 3000",
     "lint": "eslint"
   },
   "dependencies": {

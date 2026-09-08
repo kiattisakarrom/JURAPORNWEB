@@ -39,11 +39,12 @@ export class VerifyClinicalAlertService {
 
   async findAlerts(
     itemScopes: VerifyAlertItemScope[],
+    createRequest: () => sql.Request = () => this.databaseService.createRequest(),
   ): Promise<Map<string, VerifyClinicalAlert[]>> {
     const scopes = this.normalizeScopes(itemScopes);
     if (scopes.length === 0) return new Map();
 
-    const request = this.databaseService.createRequest();
+    const request = createRequest();
     request.input(
       'selectedItemsJson',
       sql.NVarChar(sql.MAX),

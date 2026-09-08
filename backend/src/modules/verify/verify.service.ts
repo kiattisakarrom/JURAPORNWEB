@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as sql from 'mssql';
+import { sourceRevision } from './source-revision';
 import { DatabaseService } from '../../database/database.service';
 import { GetVerifyPrescriptionsQueryDto } from './dto/get-verify-prescriptions-query.dto';
 import { GetVerifyQueryDto } from './dto/get-verify-query.dto';
@@ -281,10 +282,18 @@ export class VerifyService {
   async findVisitPrescriptions(
     visitDate: string,
     visitNumber: string,
+    createRequest?: () => sql.Request,
   ): Promise<VerifyPrescriptionPatient[]> {
-    const request = this.databaseService.createRequest();
-    request.input('visitDate', sql.Date, visitDate);
-    request.input('visitNumber', sql.VarChar(20), visitNumber);
+    return this.findVisitsPrescriptions([{ VISITDATETIME: visitDate, VISITNUMBER: visitNumber }], createRequest);
+  }
+
+  async findVisitsPrescriptions(
+    visits: Array<{ VISITDATETIME: string; VISITNUMBER: string }>,
+    createRequest: () => sql.Request = () => this.databaseService.createRequest(),
+  ): Promise<VerifyPrescriptionPatient[]> {
+    if (!visits.length) return [];
+    const request = createRequest();
+    request.input('visitKeys', sql.NVarChar(sql.MAX), JSON.stringify(visits));
     const result = await request.query<VerifyPrescriptionListRow>(`
       SELECT
         o.CREATEDATETIME AS PRESCRIPTION_CREATEDATETIME,
@@ -317,14 +326,16 @@ export class VerifyService {
         ON d.DOCTORCODE = o.DOCTORORDERCODE
       LEFT JOIN dbo.TBLDEPT AS dept
         ON dept.DEPTCODE = o.CLINIC_CODE
-      WHERE o.VISITDATETIME = @visitDate
-        AND o.VISITNUMBER = @visitNumber
+      WHERE EXISTS (SELECT 1 FROM OPENJSON(@visitKeys)
+        WITH (VISITDATETIME date, VISITNUMBER varchar(20)) k
+        WHERE k.VISITDATETIME=o.VISITDATETIME AND k.VISITNUMBER=o.VISITNUMBER)
         AND o.PATIENTID IS NOT NULL
       ORDER BY o.PATIENTID, o.PRESCRIPTIONNUMBER, oi.ITEMSEQ, oi.MEDICINECODE;
     `);
 
     const alertMap = await this.clinicalAlertService.findAlerts(
       this.createAlertScopes(result.recordset),
+      createRequest,
     );
     return this.groupPrescriptionRows(result.recordset, alertMap);
   }
@@ -454,7 +465,19 @@ export class VerifyService {
       }
     }
 
-    return Array.from(patientMap.values());
+    const patients = Array.from(patientMap.values());
+    for (const patient of patients) {
+      const visits = new Map<string, VerifyPrescriptionListItem[]>();
+      for (const prescription of patient.PRESCRIPTIONS) {
+        const key = `${prescription.VISITDATETIME}|${prescription.VISITNUMBER}`;
+        visits.set(key, [...(visits.get(key) ?? []), prescription]);
+      }
+      for (const prescriptions of visits.values()) {
+        const revision = sourceRevision({ ...patient, PRESCRIPTIONS: prescriptions });
+        for (const prescription of prescriptions) prescription.SOURCE_REVISION = revision;
+      }
+    }
+    return patients;
   }
 
   private createAlertScopes(rows: VerifyQueryRow[]): VerifyAlertItemScope[] {

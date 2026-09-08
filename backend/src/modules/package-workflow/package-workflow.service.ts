@@ -13,6 +13,7 @@ import {
 } from '../verify/interfaces/verify-prescriptions-response.interface';
 import { VerifyItem } from '../verify/interfaces/verify-response.interface';
 import { VerifyService } from '../verify/verify.service';
+import { sourceRevision } from '../verify/source-revision';
 import {
   CheckingPackagePairDto,
   ClaimVerifyLockDto,
@@ -24,6 +25,8 @@ import {
   PackageTransitionActionDto,
   PackageTransitionDto,
   PackageWorkflowsQueryDto,
+  SavePackageNoteDto,
+  SaveVerifyNoteDto,
   SetPackagePendingDto,
   VerifyLockDto,
   VerifyModeDto,
@@ -31,10 +34,12 @@ import {
 } from './dto/package-workflow.dto';
 import {
   CheckingPairResponse,
+  PackageNoteResponse,
   PackageItemResponse,
   PackageResponse,
   PackageWorkflowPrescriptionResponse,
   PackageWorkflowResponse,
+  VerifyNoteResponse,
   VerifyPackageResponse,
 } from './interfaces/package-workflow-response.interface';
 
@@ -46,6 +51,7 @@ interface WorkflowIdentityRow {
   VERIFY_LOCK_TOKEN: string | null;
   VERIFY_LOCK_SESSION: string | null;
   VERIFY_LOCK_EXPIRES_AT: Date | string | null;
+  VERIFY_NOTE_DRAFT: string | null;
 }
 
 interface WorkflowQueryRow {
@@ -62,6 +68,9 @@ interface WorkflowQueryRow {
   BLOCK_REASON_CODE: string | null;
   BLOCK_REASON_TEXT: string | null;
   PAYMENT_STATUS: string;
+  VERIFY_NOTE_DRAFT: string | null;
+  VERIFY_NOTE_UPDATED_AT: Date | string | null;
+  VERIFY_NOTE_UPDATED_BY: string | null;
   CREATED_AT: Date | string;
   UPDATED_AT: Date | string;
   ROW_VERSION: Buffer;
@@ -140,6 +149,14 @@ interface PackageIdentityRow {
   VISITNUMBER: string;
 }
 
+interface PackageNoteIdentityRow {
+  PACKAGE_ID: string;
+  WORKFLOW_ID: string;
+  PAGE_NOW: string;
+  IS_ACTIVE: boolean;
+  VERIFY_NOTE: string | null;
+}
+
 interface PackageItemIdentityRow {
   PACKAGE_ITEM_ID: string;
   MEDICINECODE: string;
@@ -162,11 +179,16 @@ export class PackageWorkflowService {
 
   async findWorkflows(
     query: PackageWorkflowsQueryDto,
+    scope?: { visits: Array<{ VISITDATETIME: string; VISITNUMBER: string }>; createRequest: () => sql.Request },
   ): Promise<PackageWorkflowResponse[]> {
     this.validateDateRange(query.fromDate, query.toDate);
     const conditions = ['1 = 1'];
-    const request = this.databaseService.createRequest();
+    const request = scope ? scope.createRequest() : this.databaseService.createRequest();
     request.input('limit', sql.Int, query.limit);
+    if (scope) {
+      request.input('visitKeys', sql.NVarChar(sql.MAX), JSON.stringify(scope.visits));
+      conditions.push(`EXISTS (SELECT 1 FROM OPENJSON(@visitKeys) WITH (VISITDATETIME date, VISITNUMBER varchar(20)) k WHERE k.VISITDATETIME=workflow.VISITDATETIME AND k.VISITNUMBER=workflow.VISITNUMBER)`);
+    }
     if (query.patientId) {
       conditions.push('workflow.PATIENTID = @patientId');
       request.input('patientId', sql.VarChar(15), query.patientId);
@@ -195,7 +217,9 @@ export class PackageWorkflowService {
         workflow.PATIENT_NAME, workflow.WORKFLOW_RUN_NO,
         workflow.CASE_STATUS, workflow.IS_ACTIVE, workflow.QUEUE_NO,
         workflow.BLOCK_REASON_CODE, workflow.BLOCK_REASON_TEXT,
-        workflow.PAYMENT_STATUS, workflow.CREATED_AT, workflow.UPDATED_AT,
+        workflow.PAYMENT_STATUS, workflow.VERIFY_NOTE_DRAFT,
+        workflow.VERIFY_NOTE_UPDATED_AT, workflow.VERIFY_NOTE_UPDATED_BY,
+        workflow.CREATED_AT, workflow.UPDATED_AT,
         workflow.ROW_VERSION, workflow.VERIFY_LOCK_TOKEN,
         workflow.VERIFY_LOCK_SESSION, workflow.VERIFY_LOCK_OWNER,
         workflow.VERIFY_LOCK_WORKSTATION, workflow.VERIFY_LOCKED_AT,
@@ -226,7 +250,7 @@ export class PackageWorkflowService {
     return this.groupWorkflowRows(result.recordset);
   }
 
-  async findWorkflow(workflowId: string): Promise<PackageWorkflowResponse> {
+  async findWorkflow(workflowId: string, includeLockToken = false): Promise<PackageWorkflowResponse> {
     const request = this.databaseService.createRequest();
     request.input('workflowId', sql.UniqueIdentifier, workflowId);
     const result = await request.query<WorkflowQueryRow>(`
@@ -236,7 +260,9 @@ export class PackageWorkflowService {
         workflow.PATIENT_NAME, workflow.WORKFLOW_RUN_NO,
         workflow.CASE_STATUS, workflow.IS_ACTIVE, workflow.QUEUE_NO,
         workflow.BLOCK_REASON_CODE, workflow.BLOCK_REASON_TEXT,
-        workflow.PAYMENT_STATUS, workflow.CREATED_AT, workflow.UPDATED_AT,
+        workflow.PAYMENT_STATUS, workflow.VERIFY_NOTE_DRAFT,
+        workflow.VERIFY_NOTE_UPDATED_AT, workflow.VERIFY_NOTE_UPDATED_BY,
+        workflow.CREATED_AT, workflow.UPDATED_AT,
         workflow.ROW_VERSION, workflow.VERIFY_LOCK_TOKEN,
         workflow.VERIFY_LOCK_SESSION, workflow.VERIFY_LOCK_OWNER,
         workflow.VERIFY_LOCK_WORKSTATION, workflow.VERIFY_LOCKED_AT,
@@ -264,16 +290,20 @@ export class PackageWorkflowService {
       WHERE workflow.WORKFLOW_ID = @workflowId
       ORDER BY prescription.PRESCRIPTIONNUMBER, item.ITEMSEQ;
     `);
-    const workflow = this.groupWorkflowRows(result.recordset)[0];
+    const workflow = this.groupWorkflowRows(result.recordset, includeLockToken)[0];
     if (!workflow) throw new NotFoundException('Package workflow was not found');
     return workflow;
   }
 
-  async findPackages(query: PackagesQueryDto): Promise<PackageResponse[]> {
+  async findPackages(query: PackagesQueryDto, scope?: { visits: Array<{ VISITDATETIME: string; VISITNUMBER: string }>; createRequest: () => sql.Request }): Promise<PackageResponse[]> {
     this.validateDateRange(query.fromDate, query.toDate);
     const conditions = ['1 = 1'];
-    const request = this.databaseService.createRequest();
+    const request = scope ? scope.createRequest() : this.databaseService.createRequest();
     request.input('limit', sql.Int, query.limit);
+    if (scope) {
+      request.input('visitKeys', sql.NVarChar(sql.MAX), JSON.stringify(scope.visits));
+      conditions.push(`EXISTS (SELECT 1 FROM OPENJSON(@visitKeys) WITH (VISITDATETIME date, VISITNUMBER varchar(20)) k WHERE k.VISITDATETIME=workflow.VISITDATETIME AND k.VISITNUMBER=workflow.VISITNUMBER)`);
+    }
     if (query.pageNow) {
       conditions.push('package.PAGE_NOW = @pageNow');
       request.input('pageNow', sql.VarChar(32), query.pageNow);
@@ -361,6 +391,56 @@ export class PackageWorkflowService {
     return packageResponse;
   }
 
+  async savePackageNote(
+    packageId: string,
+    body: SavePackageNoteDto,
+  ): Promise<PackageNoteResponse> {
+    return this.databaseService.withTransaction(async (createRequest) => {
+      const lockRequest = createRequest();
+      lockRequest.input('packageId', sql.UniqueIdentifier, packageId);
+      const lockResult = await lockRequest.query<PackageNoteIdentityRow>(`
+        SELECT PACKAGE_ID, WORKFLOW_ID, PAGE_NOW, IS_ACTIVE, VERIFY_NOTE
+        FROM dbo.TBLPACKAGEMASTER WITH (UPDLOCK, HOLDLOCK)
+        WHERE PACKAGE_ID = @packageId;
+      `);
+      const itemPackage = lockResult.recordset[0];
+      if (!itemPackage) throw new NotFoundException('Package was not found');
+      if (!itemPackage.IS_ACTIVE || !['MATCHING', 'CHECKING'].includes(itemPackage.PAGE_NOW)) {
+        throw new ConflictException('Package note can only be edited in Matching or Checking');
+      }
+
+      const note = this.normalizeVerifyNote(body.note);
+      const actorName = body.actorName ?? 'MVP user';
+      const request = createRequest();
+      request.input('packageId', sql.UniqueIdentifier, packageId);
+      request.input('note', sql.NVarChar(1000), note);
+      request.input('actorName', sql.NVarChar(150), actorName);
+      const result = await request.query<{
+        PACKAGE_ID: string;
+        VERIFY_NOTE: string | null;
+        UPDATED_AT: Date | string;
+      }>(`
+        UPDATE dbo.TBLPACKAGEMASTER
+        SET VERIFY_NOTE = @note, UPDATED_AT = SYSUTCDATETIME()
+        OUTPUT inserted.PACKAGE_ID, inserted.VERIFY_NOTE, inserted.UPDATED_AT
+        WHERE PACKAGE_ID = @packageId;
+      `);
+      await this.insertEvent(createRequest, {
+        workflowId: itemPackage.WORKFLOW_ID,
+        packageId,
+        eventType: 'PACKAGE_NOTE_UPDATED',
+        result: 'SUCCESS',
+        actorName,
+      });
+      const saved = result.recordset[0];
+      return {
+        PACKAGE_ID: saved.PACKAGE_ID,
+        VERIFY_NOTE: saved.VERIFY_NOTE,
+        UPDATED_AT: this.toIso(saved.UPDATED_AT) ?? '',
+      };
+    }, sql.ISOLATION_LEVEL.SERIALIZABLE);
+  }
+
   async claimVerifyLock(
     body: ClaimVerifyLockDto,
   ): Promise<PackageWorkflowResponse> {
@@ -437,13 +517,14 @@ export class PackageWorkflowService {
         );
       `);
     }, sql.ISOLATION_LEVEL.SERIALIZABLE);
-    return this.findWorkflow(workflowId);
+    return this.findWorkflow(workflowId, true);
   }
 
   async heartbeatVerifyLock(
     workflowId: string,
     body: VerifyLockDto,
-  ): Promise<PackageWorkflowResponse> {
+    compact = false,
+  ): Promise<PackageWorkflowResponse | Pick<PackageWorkflowResponse,'WORKFLOW_ID'|'VERIFY_LOCK'|'ROW_VERSION'>> {
     const request = this.databaseService.createRequest();
     request.input('workflowId', sql.UniqueIdentifier, workflowId);
     request.input('token', sql.UniqueIdentifier, body.lockToken);
@@ -461,6 +542,22 @@ export class PackageWorkflowService {
     `);
     if ((result.rowsAffected[0] ?? 0) === 0) {
       throw new ConflictException('Verify lock หมดอายุหรือถูกปล่อยแล้ว');
+    }
+    this.databaseService.notifyChange();
+    if (compact) {
+      const lockRequest = this.databaseService.createRequest();
+      lockRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      const lockResult = await lockRequest.query<WorkflowQueryRow>(`
+        SELECT WORKFLOW_ID,ROW_VERSION,VERIFY_LOCK_TOKEN,VERIFY_LOCK_SESSION,VERIFY_LOCK_OWNER,
+          VERIFY_LOCK_WORKSTATION,VERIFY_LOCKED_AT,VERIFY_LOCK_EXPIRES_AT
+        FROM dbo.TBLWORKFLOWMASTER WHERE WORKFLOW_ID=@workflowId;
+      `);
+      const row=lockResult.recordset[0];
+      return { WORKFLOW_ID:workflowId, ROW_VERSION:Buffer.from(row.ROW_VERSION).toString('base64'), VERIFY_LOCK:{
+        LOCK_TOKEN:null,SESSION_ID:row.VERIFY_LOCK_SESSION,OWNER_NAME:row.VERIFY_LOCK_OWNER,
+        WORKSTATION_CODE:row.VERIFY_LOCK_WORKSTATION,LOCKED_AT:this.toIso(row.VERIFY_LOCKED_AT),
+        EXPIRES_AT:this.toIso(row.VERIFY_LOCK_EXPIRES_AT),IS_LOCKED:Boolean(row.VERIFY_LOCK_TOKEN && row.VERIFY_LOCK_EXPIRES_AT && new Date(row.VERIFY_LOCK_EXPIRES_AT).getTime()>Date.now()),
+      }};
     }
     return this.findWorkflow(workflowId);
   }
@@ -492,30 +589,68 @@ export class PackageWorkflowService {
     return this.findWorkflow(workflowId);
   }
 
+  async saveVerifyNote(
+    workflowId: string,
+    body: SaveVerifyNoteDto,
+  ): Promise<VerifyNoteResponse> {
+    return this.databaseService.withTransaction(async (createRequest) => {
+      const lockRequest = createRequest();
+      lockRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      const lockResult = await lockRequest.query<WorkflowIdentityRow>(`
+        SELECT WORKFLOW_ID, VISITDATETIME, VISITNUMBER, CASE_STATUS,
+          VERIFY_LOCK_TOKEN, VERIFY_LOCK_SESSION, VERIFY_LOCK_EXPIRES_AT,
+          VERIFY_NOTE_DRAFT
+        FROM dbo.TBLWORKFLOWMASTER WITH (UPDLOCK, HOLDLOCK)
+        WHERE WORKFLOW_ID = @workflowId AND IS_ACTIVE = 1;
+      `);
+      const workflow = lockResult.recordset[0];
+      if (!workflow) throw new NotFoundException('Active workflow was not found');
+      this.assertVerifyLock(workflow, body);
+      if (workflow.CASE_STATUS !== 'VERIFY') {
+        throw new ConflictException('Workflow is not in Verify');
+      }
+
+      const note = this.normalizeVerifyNote(body.note);
+      const request = createRequest();
+      request.input('workflowId', sql.UniqueIdentifier, workflowId);
+      request.input('note', sql.NVarChar(1000), note);
+      request.input('actorName', sql.NVarChar(150), body.actorName ?? 'MVP user');
+      const result = await request.query<{
+        WORKFLOW_ID: string;
+        VERIFY_NOTE_DRAFT: string | null;
+        VERIFY_NOTE_UPDATED_AT: Date | string;
+      }>(`
+        UPDATE dbo.TBLWORKFLOWMASTER
+        SET VERIFY_NOTE_DRAFT = @note,
+            VERIFY_NOTE_UPDATED_AT = SYSUTCDATETIME(),
+            VERIFY_NOTE_UPDATED_BY = @actorName,
+            UPDATED_AT = SYSUTCDATETIME()
+        OUTPUT inserted.WORKFLOW_ID, inserted.VERIFY_NOTE_DRAFT,
+          inserted.VERIFY_NOTE_UPDATED_AT
+        WHERE WORKFLOW_ID = @workflowId;
+      `);
+      const saved = result.recordset[0];
+      return {
+        WORKFLOW_ID: saved.WORKFLOW_ID,
+        VERIFY_NOTE_DRAFT: saved.VERIFY_NOTE_DRAFT,
+        VERIFY_NOTE_UPDATED_AT: this.toIso(saved.VERIFY_NOTE_UPDATED_AT) ?? '',
+      };
+    }, sql.ISOLATION_LEVEL.SERIALIZABLE);
+  }
+
   async verifyPrescription(
     workflowId: string,
     body: VerifyPackageDto,
   ): Promise<VerifyPackageResponse> {
     const workflowBefore = await this.findWorkflow(workflowId);
-    const source = await this.getSourceVisit(
-      workflowBefore.VISITDATETIME,
-      workflowBefore.VISITNUMBER,
-    );
-    const sourcePrescription = source.PRESCRIPTIONS.find(
-      (prescription) =>
-        prescription.PRESCRIPTIONNUMBER === body.prescriptionNumber,
-    );
-    if (!sourcePrescription) {
-      throw new NotFoundException('Prescription was not found in source data');
-    }
-
     const transactionResult = await this.databaseService.withTransaction(
       async (createRequest) => {
         const lockRequest = createRequest();
         lockRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
         const lockResult = await lockRequest.query<WorkflowIdentityRow>(`
           SELECT WORKFLOW_ID, VISITDATETIME, VISITNUMBER, CASE_STATUS,
-            VERIFY_LOCK_TOKEN, VERIFY_LOCK_SESSION, VERIFY_LOCK_EXPIRES_AT
+            VERIFY_LOCK_TOKEN, VERIFY_LOCK_SESSION, VERIFY_LOCK_EXPIRES_AT,
+            VERIFY_NOTE_DRAFT
           FROM dbo.TBLWORKFLOWMASTER WITH (UPDLOCK, HOLDLOCK)
           WHERE WORKFLOW_ID = @workflowId AND IS_ACTIVE = 1;
         `);
@@ -534,6 +669,27 @@ export class PackageWorkflowService {
           return { packageId: existing.recordset[0].PACKAGE_ID, packageCreated: true };
         }
         this.assertVerifyLock(locked, body);
+        if (locked.CASE_STATUS !== 'VERIFY') throw new ConflictException('Workflow is not in Verify');
+        // Read source rows (including the PN key range) inside the same serializable
+        // transaction. A source edit cannot slip between comparison and packaging.
+        const source = await this.getSourceVisit(workflowBefore.VISITDATETIME, workflowBefore.VISITNUMBER, createRequest);
+        const sourcePrescription = source.PRESCRIPTIONS.find(p => p.PRESCRIPTIONNUMBER === body.prescriptionNumber);
+        if (!sourcePrescription) throw new NotFoundException('Prescription was not found in source data');
+        if (!body.expectedSourceRevision || sourcePrescription.SOURCE_REVISION !== body.expectedSourceRevision) {
+          throw new ConflictException({ code: 'SOURCE_CHANGED', message: 'ข้อมูลใบยาเปลี่ยน กรุณาตรวจข้อมูลล่าสุดก่อน Verify อีกครั้ง' });
+        }
+
+        const verifyNote = body.note === undefined
+          ? locked.VERIFY_NOTE_DRAFT
+          : this.normalizeVerifyNote(body.note);
+        if (body.note !== undefined) {
+          await this.updateVerifyNoteDraft(
+            createRequest,
+            workflowId,
+            verifyNote,
+            body.actorName,
+          );
+        }
 
         await this.synchronizePrescriptionRows(createRequest, workflowId, source);
 
@@ -559,6 +715,7 @@ export class PackageWorkflowService {
             [{ prescription: sourcePrescription, items: selected }],
             PackagePriorityDto.URGENT,
             body,
+            verifyNote,
           );
           await this.updatePrescriptionStatus(
             createRequest,
@@ -616,6 +773,7 @@ export class PackageWorkflowService {
           remainingGroups,
           PackagePriorityDto.NORMAL,
           body,
+          verifyNote,
         );
         const packagedRequest = createRequest();
         packagedRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
@@ -1178,6 +1336,7 @@ export class PackageWorkflowService {
     groups: Array<{ prescription: VerifyPrescriptionListItem; items: VerifyItem[] }>,
     priority: PackagePriorityDto,
     body: VerifyPackageDto,
+    verifyNote: string | null,
   ): Promise<string> {
     const packageId = randomUUID();
     const packageRequest = createRequest();
@@ -1195,7 +1354,7 @@ export class PackageWorkflowService {
     insertRequest.input('packageNumber', sql.VarChar(60), packageNumber);
     insertRequest.input('batchNo', sql.Int, batchNo);
     insertRequest.input('priority', sql.VarChar(16), priority);
-    insertRequest.input('note', sql.NVarChar(1000), body.note ?? null);
+    insertRequest.input('note', sql.NVarChar(1000), verifyNote);
     insertRequest.input('idempotencyKey', sql.VarChar(100), body.idempotencyKey);
     insertRequest.input('actorName', sql.NVarChar(150), body.actorName ?? 'MVP user');
     await insertRequest.query(`
@@ -1283,6 +1442,7 @@ export class PackageWorkflowService {
         priority,
         itemCount: groups.reduce((count, group) => count + group.items.length, 0),
         patientId: source.PATIENTID,
+        sourceRevisionAtCreation: sourceRevision(source),
       }),
     });
     return packageId;
@@ -1423,6 +1583,30 @@ export class PackageWorkflowService {
     }
   }
 
+  private normalizeVerifyNote(note: string): string | null {
+    return note.length === 0 ? null : note;
+  }
+
+  private async updateVerifyNoteDraft(
+    createRequest: () => sql.Request,
+    workflowId: string,
+    note: string | null,
+    actorName?: string,
+  ): Promise<void> {
+    const request = createRequest();
+    request.input('workflowId', sql.UniqueIdentifier, workflowId);
+    request.input('note', sql.NVarChar(1000), note);
+    request.input('actorName', sql.NVarChar(150), actorName ?? 'MVP user');
+    await request.query(`
+      UPDATE dbo.TBLWORKFLOWMASTER
+      SET VERIFY_NOTE_DRAFT = @note,
+          VERIFY_NOTE_UPDATED_AT = SYSUTCDATETIME(),
+          VERIFY_NOTE_UPDATED_BY = @actorName,
+          UPDATED_AT = SYSUTCDATETIME()
+      WHERE WORKFLOW_ID = @workflowId;
+    `);
+  }
+
   private async clearVerifyLock(
     createRequest: () => sql.Request,
     workflowId: string,
@@ -1550,10 +1734,12 @@ export class PackageWorkflowService {
   private async getSourceVisit(
     visitDate: string,
     visitNumber: string,
+    createRequest?: () => sql.Request,
   ): Promise<VerifyPrescriptionPatient> {
     const patients = await this.verifyService.findVisitPrescriptions(
       visitDate,
       visitNumber,
+      createRequest,
     );
     const source = patients.find(
       (patient) => patient.PRESCRIPTIONS.some((prescription) => prescription.ITEMS.length > 0),
@@ -1596,7 +1782,7 @@ export class PackageWorkflowService {
       .digest('hex');
   }
 
-  private groupWorkflowRows(rows: WorkflowQueryRow[]): PackageWorkflowResponse[] {
+  private groupWorkflowRows(rows: WorkflowQueryRow[], includeLockToken = false): PackageWorkflowResponse[] {
     const workflows = new Map<string, PackageWorkflowResponse>();
     const prescriptions = new Map<string, PackageWorkflowPrescriptionResponse>();
     const itemStates = new Set<string>();
@@ -1618,11 +1804,14 @@ export class PackageWorkflowService {
           BLOCK_REASON_CODE: row.BLOCK_REASON_CODE,
           BLOCK_REASON_TEXT: row.BLOCK_REASON_TEXT,
           PAYMENT_STATUS: row.PAYMENT_STATUS,
+          VERIFY_NOTE_DRAFT: row.VERIFY_NOTE_DRAFT,
+          VERIFY_NOTE_UPDATED_AT: this.toIso(row.VERIFY_NOTE_UPDATED_AT),
+          VERIFY_NOTE_UPDATED_BY: row.VERIFY_NOTE_UPDATED_BY,
           CREATED_AT: this.toIso(row.CREATED_AT) ?? '',
           UPDATED_AT: this.toIso(row.UPDATED_AT) ?? '',
           ROW_VERSION: Buffer.from(row.ROW_VERSION).toString('base64'),
           VERIFY_LOCK: {
-            LOCK_TOKEN: row.VERIFY_LOCK_TOKEN,
+            LOCK_TOKEN: includeLockToken ? row.VERIFY_LOCK_TOKEN : null,
             SESSION_ID: row.VERIFY_LOCK_SESSION,
             OWNER_NAME: row.VERIFY_LOCK_OWNER,
             WORKSTATION_CODE: row.VERIFY_LOCK_WORKSTATION,

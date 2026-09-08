@@ -7,6 +7,6 @@ import { PackageWorkflowService } from './package-workflow.service';
   imports: [VerifyModule],
   controllers: [PackageWorkflowController],
   providers: [PackageWorkflowService],
+  exports: [PackageWorkflowService],
 })
 export class PackageWorkflowModule {}
-

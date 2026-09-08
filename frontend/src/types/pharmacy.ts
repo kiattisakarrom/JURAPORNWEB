@@ -60,6 +60,7 @@ export type DrugItem = {
 };
 
 export type PatientPrescription = {
+  sourceRevision?: string;
   id: string;
   pn: string;
   date?: string;
@@ -82,6 +83,7 @@ export type PatientPrescription = {
 };
 
 export type PatientQueueItem = {
+  sourceChanged?: boolean;
   id: string;
   vn: string;
   hn: string;
@@ -106,6 +108,8 @@ export type PatientQueueItem = {
   workflowCaseStatus?: string;
   workflowAllowedActions?: string[];
   activePackageId?: string | null;
+  verifyNoteDraft?: string | null;
+  verifyNoteUpdatedAt?: string | null;
   packageId?: string;
   packagePriority?: "NORMAL" | "URGENT";
   verifyLock?: {

@@ -1,3 +1,5 @@
+import type { VerifyClinicalAlert } from '../../verify/interfaces/verify-response.interface';
+
 export interface PackageWorkflowItemStateResponse {
   PRESCRIPTIONNUMBER: string;
   MEDICINECODE: string;
@@ -43,6 +45,9 @@ export interface PackageWorkflowResponse {
   BLOCK_REASON_CODE: string | null;
   BLOCK_REASON_TEXT: string | null;
   PAYMENT_STATUS: string;
+  VERIFY_NOTE_DRAFT: string | null;
+  VERIFY_NOTE_UPDATED_AT: string | null;
+  VERIFY_NOTE_UPDATED_BY: string | null;
   CREATED_AT: string;
   UPDATED_AT: string;
   ROW_VERSION: string;
@@ -51,7 +56,20 @@ export interface PackageWorkflowResponse {
   ACTIVE_PACKAGE_ID: string | null;
 }
 
+export interface VerifyNoteResponse {
+  WORKFLOW_ID: string;
+  VERIFY_NOTE_DRAFT: string | null;
+  VERIFY_NOTE_UPDATED_AT: string;
+}
+
+export interface PackageNoteResponse {
+  PACKAGE_ID: string;
+  VERIFY_NOTE: string | null;
+  UPDATED_AT: string;
+}
+
 export interface PackageItemResponse {
+  ALERTS?: VerifyClinicalAlert[];
   PACKAGE_ITEM_ID: string;
   PRESCRIPTIONNUMBER: string;
   ITEMSEQ: number;
@@ -76,6 +94,7 @@ export interface PackageItemResponse {
 }
 
 export interface PackageResponse {
+  SOURCE_CHANGED?: boolean;
   PACKAGE_ID: string;
   WORKFLOW_ID: string;
   PACKAGE_NUMBER: string;

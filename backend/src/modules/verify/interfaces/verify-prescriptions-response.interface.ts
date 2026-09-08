@@ -16,6 +16,7 @@ export interface VerifyPrescriptionPagination {
 }
 
 export interface VerifyPrescriptionListItem {
+  SOURCE_REVISION?: string;
   CREATEDATETIME: string | null;
   VISITDATETIME: string;
   VISITNUMBER: string;

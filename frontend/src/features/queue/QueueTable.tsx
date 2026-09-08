@@ -152,7 +152,11 @@ export function QueueTable({
                   <td className="px-4 font-mono text-xs font-bold text-slate-400">{patient.date ?? "—"}</td>
                   <td className="px-4 font-mono text-[15px] font-black text-[#2f6bf3]">{patient.vn}</td>
                   <td className="px-4 font-mono text-[14px] font-bold text-slate-500">{patient.hn}</td>
-                  <td className="px-4 text-[15px] font-semibold text-[#22324a]">{patient.name}</td>
+                  <td className="px-4 text-[15px] font-semibold text-[#22324a]">
+                    {patient.name}
+                    {patient.verifyLock?.isLocked ? <div className="mt-1 text-xs font-medium text-amber-700">กำลัง Verify · {patient.verifyLock.ownerName ?? "ผู้ใช้อื่น"}</div> : null}
+                    {patient.sourceChanged ? <div className="mt-1 text-xs font-medium text-amber-700">ข้อมูลใบยาต้นทางเปลี่ยนหลังสร้างแพ็กเกจ</div> : null}
+                  </td>
                   <td className="px-4 text-sm font-black text-blue-700">{prescriptions.length} PN</td>
                   <td className="px-4 text-sm font-semibold text-[#56657a]">{patient.medicationCount} รายการ</td>
                   <td className="px-4">

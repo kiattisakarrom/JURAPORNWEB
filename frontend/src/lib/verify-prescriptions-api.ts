@@ -54,6 +54,7 @@ export type VerifyPrescriptionApiDoctor = {
 };
 
 export type VerifyPrescriptionApiPrescription = {
+  SOURCE_REVISION?: string;
   CREATEDATETIME: string | null;
   VISITDATETIME: string;
   VISITNUMBER: string;

@@ -1,5 +1,6 @@
 import type { MedicationPackage, PackageWorkflow } from "@/lib/package-workflow-api";
 import type { DrugItem, PatientPrescription, PatientQueueItem, QueueStage } from "@/types/pharmacy";
+import { dedupeClinicalAlerts, mapAlertKinds, mapClinicalAlerts } from "./verify-prescriptions-adapter";
 
 export function mergeVerifyQueueWithPackageWorkflow(
   sourcePatients: PatientQueueItem[],
@@ -59,6 +60,8 @@ function overlayWorkflow(patient: PatientQueueItem, workflow: PackageWorkflow): 
     workflowId: workflow.WORKFLOW_ID,
     workflowCaseStatus: workflow.CASE_STATUS,
     activePackageId: workflow.ACTIVE_PACKAGE_ID,
+    verifyNoteDraft: workflow.VERIFY_NOTE_DRAFT,
+    verifyNoteUpdatedAt: workflow.VERIFY_NOTE_UPDATED_AT,
     verifyLock: {
       sessionId: workflow.VERIFY_LOCK.SESSION_ID,
       ownerName: workflow.VERIFY_LOCK.OWNER_NAME,
@@ -105,6 +108,8 @@ function mapPendingWorkflowToQueue(workflow: PackageWorkflow): PatientQueueItem 
     workflowId: workflow.WORKFLOW_ID,
     workflowCaseStatus: workflow.CASE_STATUS,
     activePackageId: workflow.ACTIVE_PACKAGE_ID,
+    verifyNoteDraft: workflow.VERIFY_NOTE_DRAFT,
+    verifyNoteUpdatedAt: workflow.VERIFY_NOTE_UPDATED_AT,
   };
 }
 
@@ -120,6 +125,7 @@ function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
       name: item.COMMERCIALNAME?.trim() || item.MEDICINECODE,
       sig: item.DOSEMEMO_TH?.trim() || "ไม่มีข้อมูลคำอธิบายวิธีใช้ยา",
       MEDICINECODE: item.MEDICINECODE,
+      clinicalAlerts: mapClinicalAlerts(item.ALERTS ?? [], item.MEDICINECODE),
       DOSEMEMO_TH: item.DOSEMEMO_TH ?? undefined,
       source: "—",
       machineCode: "—",
@@ -141,13 +147,15 @@ function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
     date: normalizeDate(itemPackage.VISITDATETIME),
     stage,
     time: formatTime(itemPackage.UPDATED_AT),
-    alerts: [],
+    alerts: mapAlertKinds(prescriptionDrugs.flatMap(drug => drug.clinicalAlerts ?? [])),
+    clinicalAlerts: dedupeClinicalAlerts(prescriptionDrugs.flatMap(drug => drug.clinicalAlerts ?? [])),
     drugs: prescriptionDrugs,
   }));
   const drugs = prescriptions.flatMap((prescription) => prescription.drugs);
 
   return {
     id: `package:${itemPackage.PACKAGE_ID}`,
+    sourceChanged: itemPackage.SOURCE_CHANGED,
     vn: itemPackage.VISITNUMBER,
     hn: itemPackage.PATIENTID ?? "—",
     name: itemPackage.PATIENT_NAME?.trim() || "ไม่พบชื่อผู้ป่วย",
@@ -156,7 +164,8 @@ function mapPackageToQueue(itemPackage: MedicationPackage): PatientQueueItem {
     stage,
     medicationCount: drugs.length,
     time: formatTime(itemPackage.UPDATED_AT),
-    alerts: [],
+    alerts: mapAlertKinds(drugs.flatMap(drug => drug.clinicalAlerts ?? [])),
+    clinicalAlerts: dedupeClinicalAlerts(drugs.flatMap(drug => drug.clinicalAlerts ?? [])),
     drugs,
     prescriptions,
     dataSource: "package-api",

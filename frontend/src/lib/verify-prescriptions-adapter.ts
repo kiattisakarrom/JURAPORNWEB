@@ -79,6 +79,7 @@ function mapPrescription(patientId: string, prescription: VerifyPrescriptionApiP
   return {
     id: createPrescriptionId(patientId, prescription),
     pn: prescription.PRESCRIPTIONNUMBER,
+    sourceRevision: prescription.SOURCE_REVISION,
     date: prescription.VISITDATETIME,
     stage: "verify",
     time: formatTime(prescription.CREATEDATETIME),
@@ -125,7 +126,7 @@ function mapDrug(
   };
 }
 
-function mapClinicalAlerts(alerts: VerifyClinicalAlertApi[], medicineCode: string): ClinicalAlert[] {
+export function mapClinicalAlerts(alerts: VerifyClinicalAlertApi[], medicineCode: string): ClinicalAlert[] {
   return dedupeClinicalAlerts(alerts.map((alert): ClinicalAlert => {
     if (alert.TYPE === "DI") {
       return {
@@ -155,11 +156,11 @@ function mapClinicalAlerts(alerts: VerifyClinicalAlertApi[], medicineCode: strin
   }));
 }
 
-function mapAlertKinds(alerts: ClinicalAlert[]): AlertKind[] {
+export function mapAlertKinds(alerts: ClinicalAlert[]): AlertKind[] {
   return Array.from(new Set(alerts.map((alert) => alert.kind)));
 }
 
-function dedupeClinicalAlerts(alerts: ClinicalAlert[]): ClinicalAlert[] {
+export function dedupeClinicalAlerts(alerts: ClinicalAlert[]): ClinicalAlert[] {
   const uniqueAlerts = new Map<string, ClinicalAlert>();
   alerts.forEach((alert) => {
     const key = alert.kind === "interaction"

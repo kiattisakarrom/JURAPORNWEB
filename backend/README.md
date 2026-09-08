@@ -36,15 +36,24 @@ npm run start:dev:local
 npm run start:dev:live
 ```
 
-โปรไฟล์ Live ตั้ง `PACKAGE_WORKFLOW_ENABLED=false` ไว้เป็นค่าเริ่มต้น เพราะฐาน
-`PharmaDB` ยังไม่มีตาราง `TBLWORKFLOWMASTER` และตาราง Package ที่เกี่ยวข้อง
-API รายการ `GET /package-workflows` และ `GET /packages` จะตอบ `[]` โดยไม่ query
-ตารางเหล่านี้ ส่วน API ที่ต้องเขียน Workflow จะตอบ `503` อย่างชัดเจน แต่ API
-Verify และ Patient ที่อ่านข้อมูลต้นทางยังใช้งานได้ตามปกติ
+ถ้าฐานของ profile ใดยังไม่ได้ติดตั้ง Package Workflow ให้ตั้ง
+`PACKAGE_WORKFLOW_ENABLED=false` จนกว่า installer/validation จะสำเร็จ จากนั้นจึง
+เปลี่ยนเป็น `true` และเริ่ม Backend ใหม่
 
 Backend ใช้ Port `3001` เป็นค่าเริ่มต้น
 
 ## Package workflow database
+
+สำหรับติดตั้งเครื่อง Windows Full Stack ใหม่ ให้ใช้ bundle และ checklist ที่
+[`../docs/DEPLOYMENT-WINDOWS-LAN.md`](../docs/DEPLOYMENT-WINDOWS-LAN.md)
+โดย installer ใหม่รวม Package Workflow, Realtime และ validation แล้ว:
+
+```bash
+npm run db:bundle
+npm run db:install:local
+```
+
+คำสั่งด้านล่างเก็บไว้สำหรับฐานที่ติดตั้ง migration บางส่วนแล้ว
 
 ลบ schema `workflow.*` รุ่นทดลองเดิมบน Local (คำสั่งนี้ลบข้อมูลเดิม):
 

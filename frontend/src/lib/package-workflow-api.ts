@@ -1,5 +1,6 @@
-import { apiDelete, apiGet, apiPost } from "@/lib/api-client";
+import { apiDelete, apiGet, apiPost, apiPut } from "@/lib/api-client";
 import type { DispensingQueueItem, WorkflowBasketItem, WorkflowStage } from "@/lib/workstation-api";
+import type { VerifyClinicalAlertApi } from "@/lib/verify-prescriptions-api";
 
 export type PackagePage = "PICKING" | "MATCHING" | "CHECKING" | "AWAITING_DISPENSING" | "DISPENSING" | "COMPLETE";
 export type VerifyMode = "NORMAL" | "URGENT";
@@ -41,6 +42,9 @@ export type PackageWorkflow = {
   BLOCK_REASON_CODE: string | null;
   BLOCK_REASON_TEXT: string | null;
   PAYMENT_STATUS: string;
+  VERIFY_NOTE_DRAFT: string | null;
+  VERIFY_NOTE_UPDATED_AT: string | null;
+  VERIFY_NOTE_UPDATED_BY: string | null;
   CREATED_AT: string;
   UPDATED_AT: string;
   ROW_VERSION: string;
@@ -58,6 +62,7 @@ export type PackageWorkflow = {
 };
 
 export type PackageItem = {
+  ALERTS?: VerifyClinicalAlertApi[];
   PACKAGE_ITEM_ID: string;
   PRESCRIPTIONNUMBER: string;
   ITEMSEQ: number;
@@ -82,6 +87,7 @@ export type PackageItem = {
 };
 
 export type MedicationPackage = {
+  SOURCE_CHANGED?: boolean;
   PACKAGE_ID: string;
   WORKFLOW_ID: string;
   PACKAGE_NUMBER: string;
@@ -122,14 +128,43 @@ export function claimVerifyLock(input: { visitDate: string; visitNumber: string;
 }
 
 export function heartbeatVerifyLock(workflowId: string, input: { lockToken: string; sessionId: string }) {
-  return apiPost<PackageWorkflow>(`/package-workflows/${workflowId}/verify-lock/heartbeat`, input);
+  return apiPost<Pick<PackageWorkflow,"WORKFLOW_ID"|"VERIFY_LOCK"|"ROW_VERSION">>(`/package-workflows/${workflowId}/verify-lock/heartbeat?compact=true`, input);
 }
 
 export function releaseVerifyLock(workflowId: string, input: { lockToken: string; sessionId: string }) {
   return apiDelete<PackageWorkflow>(`/package-workflows/${workflowId}/verify-lock`, input);
 }
 
+export type VerifyNoteSaveResult = {
+  WORKFLOW_ID: string;
+  VERIFY_NOTE_DRAFT: string | null;
+  VERIFY_NOTE_UPDATED_AT: string;
+};
+
+export type PackageNoteSaveResult = {
+  PACKAGE_ID: string;
+  VERIFY_NOTE: string | null;
+  UPDATED_AT: string;
+};
+
+export function saveVerifyNote(workflowId: string, input: {
+  lockToken: string;
+  sessionId: string;
+  note: string;
+  actorName?: string;
+}) {
+  return apiPut<VerifyNoteSaveResult>(`/package-workflows/${workflowId}/verify-note`, input);
+}
+
+export function savePackageNote(packageId: string, input: {
+  note: string;
+  actorName?: string;
+}) {
+  return apiPut<PackageNoteSaveResult>(`/packages/${packageId}/note`, input);
+}
+
 export function verifyPackagePrescription(workflowId: string, input: {
+  expectedSourceRevision: string;
   lockToken: string;
   sessionId: string;
   prescriptionNumber: string;

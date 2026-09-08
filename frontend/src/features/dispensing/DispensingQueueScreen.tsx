@@ -1,13 +1,12 @@
 "use client";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { BadgeCheck, BellRing, CreditCard, Megaphone, Printer, Volume2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { DispensingQueueItem } from "@/lib/workstation-api";
-import { getPackages, mapPackageToDispensing, updatePackageDispensingStatus } from "@/lib/package-workflow-api";
+import { mapPackageToDispensing, updatePackageDispensingStatus, type MedicationPackage } from "@/lib/package-workflow-api";
 import { cn } from "@/lib/utils";
 
 const statusStyles: Record<DispensingQueueItem["status"], string> = {
@@ -19,34 +18,26 @@ const statusStyles: Record<DispensingQueueItem["status"], string> = {
   "missed-call": "bg-red-50 text-red-700",
 };
 
-export function DispensingQueueScreen({ search }: { search: string }) {
-  const queryClient = useQueryClient();
+export function DispensingQueueScreen({ search, packages, isLoading, connected, onRefresh }: {
+  search: string; packages: MedicationPackage[]; isLoading: boolean; connected: boolean; onRefresh: () => Promise<void>;
+}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { data: packages = [], isLoading } = useQuery({
-    queryKey: ["dispensing-packages"],
-    queryFn: () => getPackages({ pageNow: "DISPENSING" }),
-    refetchInterval: 10000,
-  });
-  const data = useMemo(() => packages.map(mapPackageToDispensing), [packages]);
+  const data = useMemo(() => packages.filter(p => p.PAGE_NOW === "DISPENSING").map(mapPackageToDispensing), [packages]);
 
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return data.filter((item) => !keyword || [item.vn, item.hn, item.name, item.channel].some((value) => value.toLowerCase().includes(keyword)));
   }, [data, search]);
 
-  const selected = filtered.find((item) => item.id === selectedId) ?? filtered[0];
+  const selected = filtered.find((item) => item.id === selectedId);
   const upcoming = data.filter((item) => ["waiting", "ready"].includes(item.status)).slice(0, 4);
   const calling = data.find((item) => item.status === "called") ?? data[0];
 
   async function updatePickupStatus(packageId: string, status: "CALLED_WAITING" | "RECEIVED") {
+    if (!connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     try {
       await updatePackageDispensingStatus(packageId, status);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["dispensing-packages"] }),
-        queryClient.invalidateQueries({ queryKey: ["packages"] }),
-        queryClient.invalidateQueries({ queryKey: ["package-workflows"] }),
-        queryClient.invalidateQueries({ queryKey: ["verify-prescriptions"] }),
-      ]);
+      await onRefresh();
       if (status === "RECEIVED") setSelectedId(null);
       toast.success(status === "RECEIVED" ? "ยืนยันว่าผู้ป่วยรับยาแล้ว" : "เรียกผู้ป่วยและเปลี่ยนสถานะเป็นรอรับยาแล้ว");
     } catch (error) {
@@ -56,6 +47,8 @@ export function DispensingQueueScreen({ search }: { search: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {packages.find(p => p.PACKAGE_ID === selectedId)?.SOURCE_CHANGED ? <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">ข้อมูลใบยาต้นทางเปลี่ยนหลังสร้างแพ็กเกจ — รายการยาและ QR ของแพ็กเกจนี้ยังเป็นข้อมูลเดิม</div> : null}
+      {selectedId && !selected && !isLoading ? <div role="status" className="border-b border-blue-200 bg-blue-50 px-5 py-3 text-sm text-blue-800">รายการที่เลือกถูกส่งต่อหรือไม่อยู่ในตัวกรองนี้แล้ว กรุณาเลือกผู้ป่วยใหม่</div> : null}
       <div className="flex shrink-0 flex-col border-b border-slate-200 bg-white md:flex-row">
         <div className="flex items-center gap-5 bg-slate-950 px-5 py-4 text-white md:px-6">
           <div>

@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -19,14 +20,18 @@ import {
   PackagesQueryDto,
   PackageTransitionDto,
   PackageWorkflowsQueryDto,
+  SavePackageNoteDto,
+  SaveVerifyNoteDto,
   SetPackagePendingDto,
   VerifyLockDto,
   VerifyPackageDto,
 } from './dto/package-workflow.dto';
 import {
   CheckingPairResponse,
+  PackageNoteResponse,
   PackageResponse,
   PackageWorkflowResponse,
+  VerifyNoteResponse,
   VerifyPackageResponse,
 } from './interfaces/package-workflow-response.interface';
 import { PackageWorkflowService } from './package-workflow.service';
@@ -66,9 +71,10 @@ export class PackageWorkflowController {
   heartbeatVerifyLock(
     @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
     @Body() body: VerifyLockDto,
-  ): Promise<PackageWorkflowResponse> {
+    @Query('compact') compact?: string,
+  ) {
     this.assertEnabled();
-    return this.service.heartbeatVerifyLock(workflowId, body);
+    return this.service.heartbeatVerifyLock(workflowId, body, compact === 'true');
   }
 
   @Delete('package-workflows/:workflowId/verify-lock')
@@ -78,6 +84,15 @@ export class PackageWorkflowController {
   ): Promise<PackageWorkflowResponse> {
     this.assertEnabled();
     return this.service.releaseVerifyLock(workflowId, body);
+  }
+
+  @Put('package-workflows/:workflowId/verify-note')
+  saveVerifyNote(
+    @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
+    @Body() body: SaveVerifyNoteDto,
+  ): Promise<VerifyNoteResponse> {
+    this.assertEnabled();
+    return this.service.saveVerifyNote(workflowId, body);
   }
 
   @Post('package-workflows/:workflowId/verify')
@@ -118,6 +133,15 @@ export class PackageWorkflowController {
   ): Promise<PackageResponse> {
     this.assertEnabled();
     return this.service.findPackage(packageId);
+  }
+
+  @Put('packages/:packageId/note')
+  savePackageNote(
+    @Param('packageId', new ParseUUIDPipe()) packageId: string,
+    @Body() body: SavePackageNoteDto,
+  ): Promise<PackageNoteResponse> {
+    this.assertEnabled();
+    return this.service.savePackageNote(packageId, body);
   }
 
   @Post('packages/:packageId/transitions')

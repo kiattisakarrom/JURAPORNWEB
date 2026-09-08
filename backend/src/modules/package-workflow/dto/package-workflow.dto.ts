@@ -98,7 +98,22 @@ export class VerifyLockDto {
   sessionId!: string;
 }
 
+export class SaveVerifyNoteDto extends VerifyLockDto {
+  @IsString()
+  @MaxLength(1000)
+  note!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  actorName?: string;
+}
+
 export class VerifyPackageDto extends VerifyLockDto {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedSourceRevision!: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(16)
@@ -164,6 +179,12 @@ export class ActorDto {
   workstationCode?: string;
 }
 
+export class SavePackageNoteDto extends ActorDto {
+  @IsString()
+  @MaxLength(1000)
+  note!: string;
+}
+
 export class PackageTransitionDto extends ActorDto {
   @IsEnum(PackageTransitionActionDto)
   action!: PackageTransitionActionDto;
@@ -222,4 +243,3 @@ export class PackagesQueryDto extends PackageWorkflowsQueryDto {
   @IsEnum(PackagePageDto)
   pageNow?: PackagePageDto;
 }
-

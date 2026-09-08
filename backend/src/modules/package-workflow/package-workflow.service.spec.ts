@@ -3,6 +3,126 @@ import { VerifyService } from '../verify/verify.service';
 import { PackageWorkflowService } from './package-workflow.service';
 
 describe('PackageWorkflowService', () => {
+  it('auto-saves an empty Verify note as NULL for the active lock owner', async () => {
+    const lockRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{
+          WORKFLOW_ID: '22222222-2222-2222-2222-222222222222',
+          VISITDATETIME: new Date('2026-09-02T00:00:00.000Z'),
+          VISITNUMBER: '240001',
+          CASE_STATUS: 'VERIFY',
+          VERIFY_LOCK_TOKEN: '11111111-1111-1111-1111-111111111111',
+          VERIFY_LOCK_SESSION: 'session-1',
+          VERIFY_LOCK_EXPIRES_AT: new Date(Date.now() + 60_000),
+          VERIFY_NOTE_DRAFT: 'ข้อความเดิม',
+        }],
+      }),
+    };
+    const updateRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{
+          WORKFLOW_ID: '22222222-2222-2222-2222-222222222222',
+          VERIFY_NOTE_DRAFT: null,
+          VERIFY_NOTE_UPDATED_AT: new Date('2026-09-02T01:00:00.000Z'),
+        }],
+      }),
+    };
+    const requests = [lockRequest, updateRequest];
+    const databaseService = {
+      withTransaction: jest.fn().mockImplementation(async (work) => work(() => requests.shift())),
+    } as unknown as DatabaseService;
+    const service = new PackageWorkflowService(databaseService, {} as VerifyService);
+
+    const result = await service.saveVerifyNote(
+      '22222222-2222-2222-2222-222222222222',
+      {
+        lockToken: '11111111-1111-1111-1111-111111111111',
+        sessionId: 'session-1',
+        note: '',
+        actorName: 'Pharmacist',
+      },
+    );
+
+    expect(updateRequest.input).toHaveBeenCalledWith('note', expect.anything(), null);
+    expect(result).toEqual({
+      WORKFLOW_ID: '22222222-2222-2222-2222-222222222222',
+      VERIFY_NOTE_DRAFT: null,
+      VERIFY_NOTE_UPDATED_AT: '2026-09-02T01:00:00.000Z',
+    });
+  });
+
+  it('auto-saves a package note while the package is in Matching', async () => {
+    const lockRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{
+          PACKAGE_ID: '11111111-1111-1111-1111-111111111111',
+          WORKFLOW_ID: '22222222-2222-2222-2222-222222222222',
+          PAGE_NOW: 'MATCHING',
+          IS_ACTIVE: true,
+          VERIFY_NOTE: 'ข้อความเดิม',
+        }],
+      }),
+    };
+    const updateRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{
+          PACKAGE_ID: '11111111-1111-1111-1111-111111111111',
+          VERIFY_NOTE: 'ข้อความใหม่',
+          UPDATED_AT: new Date('2026-09-07T09:00:00.000Z'),
+        }],
+      }),
+    };
+    const eventRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({ recordset: [] }),
+    };
+    const requests = [lockRequest, updateRequest, eventRequest];
+    const databaseService = {
+      withTransaction: jest.fn().mockImplementation(async (work) => work(() => requests.shift())),
+    } as unknown as DatabaseService;
+    const service = new PackageWorkflowService(databaseService, {} as VerifyService);
+
+    const result = await service.savePackageNote(
+      '11111111-1111-1111-1111-111111111111',
+      { note: 'ข้อความใหม่', actorName: 'Pharmacist' },
+    );
+
+    expect(updateRequest.input).toHaveBeenCalledWith('note', expect.anything(), 'ข้อความใหม่');
+    expect(result).toEqual({
+      PACKAGE_ID: '11111111-1111-1111-1111-111111111111',
+      VERIFY_NOTE: 'ข้อความใหม่',
+      UPDATED_AT: '2026-09-07T09:00:00.000Z',
+    });
+  });
+
+  it('does not allow editing a package note outside Matching or Checking', async () => {
+    const lockRequest = {
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockResolvedValue({
+        recordset: [{
+          PACKAGE_ID: '11111111-1111-1111-1111-111111111111',
+          WORKFLOW_ID: '22222222-2222-2222-2222-222222222222',
+          PAGE_NOW: 'DISPENSING',
+          IS_ACTIVE: true,
+          VERIFY_NOTE: null,
+        }],
+      }),
+    };
+    const databaseService = {
+      withTransaction: jest.fn().mockImplementation(async (work) => work(() => lockRequest)),
+    } as unknown as DatabaseService;
+    const service = new PackageWorkflowService(databaseService, {} as VerifyService);
+
+    await expect(service.savePackageNote(
+      '11111111-1111-1111-1111-111111111111',
+      { note: 'ห้ามแก้' },
+    )).rejects.toThrow('Package note can only be edited in Matching or Checking');
+  });
+
   it('maps a Matching package and exposes scan action', async () => {
     const request = {
       input: jest.fn().mockReturnThis(),
@@ -68,4 +188,3 @@ describe('PackageWorkflowService', () => {
     expect(result[0].ALLOWED_ACTIONS).toEqual(['SCAN_MEDICINE']);
   });
 });
-

@@ -65,6 +65,8 @@ export function MobileQueueList({
                 <div>
                   <div className="font-mono text-sm font-black text-blue-700">VN {patient.vn}</div>
                   <div className="mt-1 text-base font-black text-slate-800">{patient.name}</div>
+                  {patient.verifyLock?.isLocked ? <div className="mt-1 text-xs text-amber-700">กำลัง Verify · {patient.verifyLock.ownerName ?? "ผู้ใช้อื่น"}</div> : null}
+                  {patient.sourceChanged ? <div className="mt-1 text-xs text-amber-700">ข้อมูลใบยาต้นทางเปลี่ยนหลังสร้างแพ็กเกจ</div> : null}
                   <div className="mt-1 font-mono text-xs font-bold text-slate-400">HN {patient.hn}</div>
                 </div>
                 <div className="shrink-0 text-right">
