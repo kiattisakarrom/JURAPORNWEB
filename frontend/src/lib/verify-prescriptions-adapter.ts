@@ -17,7 +17,7 @@ export function mapVerifyPatientsToQueue(
   apiPatients: VerifyPrescriptionApiPatient[],
   totalPatients: number,
 ): VerifyQueueData {
-  const patients = apiPatients.flatMap(mapPatientVisits).sort(compareVisitsNewestFirst);
+  const patients = apiPatients.flatMap(mapPatientVisits).sort(compareVisitsOldestFirst);
 
   return {
     patients,
@@ -39,7 +39,7 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
 
   return Array.from(visitMap.values()).map((prescriptions) => {
     const firstPrescription = prescriptions[0];
-    const latestCreatedAt = findLatestCreatedAt(prescriptions);
+    const firstCreatedAt = findFirstCreatedAt(prescriptions);
     const mappedPrescriptions = prescriptions.map((prescription) => mapPrescription(patient.PATIENTID, prescription));
     const drugs = mappedPrescriptions.flatMap((prescription) => prescription.drugs);
     const clinicalAlerts = dedupeClinicalAlerts(drugs.flatMap((drug) => drug.clinicalAlerts ?? []));
@@ -56,7 +56,7 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
       date: firstPrescription.VISITDATETIME,
       stage: "verify",
       medicationCount: mappedPrescriptions.reduce((total, prescription) => total + prescription.drugs.length, 0),
-      time: formatTime(latestCreatedAt),
+      time: formatTime(firstCreatedAt),
       durationMinutes: undefined,
       alerts: mapAlertKinds(clinicalAlerts),
       clinicalAlerts,
@@ -66,7 +66,7 @@ function mapPatientVisits(patient: VerifyPrescriptionApiPatient): PatientQueueIt
       doctorCode: firstPrescription.DOCTOR.DOCTORCODE,
       clinicCode: firstPrescription.CLINIC_CODE,
       wardName: firstPrescription.LOCALWARDNAME,
-      prescriptionCreatedAt: latestCreatedAt,
+      prescriptionCreatedAt: firstCreatedAt,
       dataSource: "verify-prescriptions-api",
     };
   });
@@ -193,11 +193,11 @@ function createPrescriptionId(patientId: string, prescription: VerifyPrescriptio
   ].map(encodeURIComponent).join(":");
 }
 
-function findLatestCreatedAt(prescriptions: VerifyPrescriptionApiPrescription[]) {
+function findFirstCreatedAt(prescriptions: VerifyPrescriptionApiPrescription[]) {
   const timestamps = prescriptions
     .map((prescription) => prescription.CREATEDATETIME)
     .filter((value): value is string => Boolean(value))
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
   return timestamps[0] ?? null;
 }
@@ -220,8 +220,14 @@ function formatQuantity(quantity: number | null, unit: string | null) {
   return [quantityText, unit?.trim()].filter(Boolean).join(" ");
 }
 
-function compareVisitsNewestFirst(left: PatientQueueItem, right: PatientQueueItem) {
-  const dateComparison = (right.prescriptionCreatedAt ?? right.date ?? "").localeCompare(left.prescriptionCreatedAt ?? left.date ?? "");
+function compareVisitsOldestFirst(left: PatientQueueItem, right: PatientQueueItem) {
+  const leftCreatedAt = left.prescriptionCreatedAt;
+  const rightCreatedAt = right.prescriptionCreatedAt;
+  if (!leftCreatedAt && rightCreatedAt) return 1;
+  if (leftCreatedAt && !rightCreatedAt) return -1;
+  const dateComparison = (leftCreatedAt ?? "").localeCompare(rightCreatedAt ?? "");
   if (dateComparison !== 0) return dateComparison;
+  const visitDateComparison = (left.date ?? "").localeCompare(right.date ?? "");
+  if (visitDateComparison !== 0) return visitDateComparison;
   return left.vn.localeCompare(right.vn);
 }

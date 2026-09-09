@@ -251,6 +251,11 @@ describe('VerifyService', () => {
     expect(dataSql).not.toContain('o.VISITDATETIME >= @fromDate');
     expect(dataSql).toContain('PagedVisits AS');
     expect(dataSql).toContain('AND o.VISITNUMBER = selectedVisits.VISITNUMBER');
+    expect(dataSql).toContain(
+      'MIN(o.CREATEDATETIME) AS FIRST_CREATEDATETIME',
+    );
+    expect(dataSql).toContain('FIRST_CREATEDATETIME ASC');
+    expect(dataSql).not.toContain('LATEST_CREATEDATETIME');
   });
 
   it('allows visitNumber as the only list filter', async () => {

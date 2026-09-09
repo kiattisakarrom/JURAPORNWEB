@@ -193,7 +193,7 @@ export class VerifyService {
           o.PATIENTID,
           o.VISITDATETIME,
           o.VISITNUMBER,
-          MAX(o.CREATEDATETIME) AS LATEST_CREATEDATETIME
+          MIN(o.CREATEDATETIME) AS FIRST_CREATEDATETIME
         FROM dbo.TBLORX AS o
         WHERE ${whereClause}
         GROUP BY o.PATIENTID, o.VISITDATETIME, o.VISITNUMBER
@@ -203,11 +203,12 @@ export class VerifyService {
           PATIENTID,
           VISITDATETIME,
           VISITNUMBER,
-          LATEST_CREATEDATETIME
+          FIRST_CREATEDATETIME
         FROM FilteredVisits
         ORDER BY
-          LATEST_CREATEDATETIME DESC,
-          VISITDATETIME DESC,
+          CASE WHEN FIRST_CREATEDATETIME IS NULL THEN 1 ELSE 0 END,
+          FIRST_CREATEDATETIME ASC,
+          VISITDATETIME ASC,
           VISITNUMBER,
           PATIENTID
         OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
@@ -248,8 +249,9 @@ export class VerifyService {
       LEFT JOIN dbo.TBLDEPT AS dept
         ON dept.DEPTCODE = o.CLINIC_CODE
       ORDER BY
-        selectedVisits.LATEST_CREATEDATETIME DESC,
-        selectedVisits.VISITDATETIME DESC,
+        CASE WHEN selectedVisits.FIRST_CREATEDATETIME IS NULL THEN 1 ELSE 0 END,
+        selectedVisits.FIRST_CREATEDATETIME ASC,
+        selectedVisits.VISITDATETIME ASC,
         selectedVisits.VISITNUMBER,
         selectedVisits.PATIENTID,
         o.PRESCRIPTIONNUMBER,

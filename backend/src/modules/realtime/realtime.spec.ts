@@ -1,6 +1,10 @@
 import * as sql from 'mssql';
+import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../../database/database.service';
+import { PackageWorkflowService } from '../package-workflow/package-workflow.service';
+import { VerifyService } from '../verify/verify.service';
 import { ChangeTrackingRepository } from './change-tracking.repository';
+import { RealtimeService } from './realtime.service';
 import { sourceRevision } from '../verify/source-revision';
 import { withSourceStatus } from './package-source-status';
 import type { VerifyPrescriptionPatient } from '../verify/interfaces/verify-prescriptions-response.interface';
@@ -54,5 +58,23 @@ describe('Realtime correctness',()=>{
       .mockResolvedValueOnce({recordset:[{invalid:1}]})};
     const db={withTransaction:jest.fn(async(work:(create:()=>unknown)=>Promise<unknown>)=>work(()=>request))} as unknown as DatabaseService;
     expect((await new ChangeTrackingRepository(db).read('workflow','1')).reset).toBe(true);
+  });
+  it('loads snapshot pages in FIFO order using the first prescription time',async()=>{
+    let manifestSql='';
+    const request={input:jest.fn().mockReturnThis(),query:jest.fn().mockImplementation(async(query:string)=>{
+      manifestSql=query;return {recordset:[]};
+    })};
+    const db={withTransaction:jest.fn(async(work:(create:()=>unknown)=>Promise<unknown>)=>work(()=>request))} as unknown as DatabaseService;
+    const tracker={version:jest.fn().mockResolvedValue('10')} as unknown as ChangeTrackingRepository;
+    const verify={findVisitsPrescriptions:jest.fn().mockResolvedValue([])} as unknown as VerifyService;
+    const workflow={findWorkflows:jest.fn().mockResolvedValue([]),findPackages:jest.fn().mockResolvedValue([])} as unknown as PackageWorkflowService;
+    const config={get:jest.fn().mockReturnValue('test')} as unknown as ConfigService;
+    const service=new RealtimeService(db,tracker,verify,workflow,config);
+
+    await service.snapshot({fromDate:'2026-09-09',toDate:'2026-09-09'});
+
+    expect(manifestSql).toContain('MIN(o.CREATEDATETIME) AS SORT_AT');
+    expect(manifestSql).toContain('MIN(SORT_AT) ASC');
+    expect(manifestSql).not.toContain('MAX(SORT_AT) DESC');
   });
 });

@@ -83,7 +83,7 @@ export class RealtimeService implements OnModuleInit, OnModuleDestroy {
       this.bindFilter(request, normalized);
       const rows = await request.query<{ VISITDATETIME: Date; VISITNUMBER: string }>(`
         WITH Visits AS (
-          SELECT o.VISITDATETIME,o.VISITNUMBER,MAX(o.CREATEDATETIME) AS SORT_AT FROM dbo.TBLORX o
+          SELECT o.VISITDATETIME,o.VISITNUMBER,MIN(o.CREATEDATETIME) AS SORT_AT FROM dbo.TBLORX o
           WHERE o.PATIENTID IS NOT NULL AND (@patientId IS NULL OR o.PATIENTID=@patientId)
           AND (@visitNumber IS NULL OR o.VISITNUMBER=@visitNumber)
           AND (@fromDate IS NULL OR (o.CREATEDATETIME>=@fromDate AND o.CREATEDATETIME<DATEADD(DAY,1,@toDate)))
@@ -93,7 +93,7 @@ export class RealtimeService implements OnModuleInit, OnModuleDestroy {
           WHERE (@patientId IS NULL OR w.PATIENTID=@patientId) AND (@visitNumber IS NULL OR w.VISITNUMBER=@visitNumber)
           AND (@fromDate IS NULL OR (w.VISITDATETIME>=@fromDate AND w.VISITDATETIME<=@toDate))
         ) SELECT VISITDATETIME,VISITNUMBER FROM Visits GROUP BY VISITDATETIME,VISITNUMBER
-        ORDER BY MAX(SORT_AT) DESC,VISITDATETIME DESC,VISITNUMBER;
+        ORDER BY CASE WHEN MIN(SORT_AT) IS NULL THEN 1 ELSE 0 END,MIN(SORT_AT) ASC,VISITDATETIME ASC,VISITNUMBER;
       `);
       return { version, keys: rows.recordset.map(row => ({ VISITDATETIME: row.VISITDATETIME.toISOString().slice(0,10), VISITNUMBER: row.VISITNUMBER })) };
     }, sql.ISOLATION_LEVEL.SNAPSHOT));
