@@ -9,25 +9,48 @@ import { clearRealtimeQueueCache } from "@/hooks/useRealtimeQueue";
 
 type SessionState = "loading" | "authenticated" | "anonymous";
 
+const SESSION_STORAGE_KEY = "pharmauto-session";
+
+function hasActiveSession() {
+  try {
+    return window.localStorage.getItem(SESSION_STORAGE_KEY) === "active";
+  } catch {
+    return false;
+  }
+}
+
+function persistSession(isActive: boolean) {
+  try {
+    if (isActive) {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, "active");
+    } else {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  } catch {
+    // The workstation can still be used for this browser tab when storage is
+    // restricted; only persistence across a refresh is unavailable.
+  }
+}
+
 export function WorkspaceApp() {
   const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>("loading");
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSessionState(window.localStorage.getItem("pharmauto-session") === "active" ? "authenticated" : "anonymous");
+      setSessionState(hasActiveSession() ? "authenticated" : "anonymous");
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
   function handleLogin() {
-    window.localStorage.setItem("pharmauto-session", "active");
+    persistSession(true);
     setSessionState("authenticated");
   }
 
   function handleLogout() {
     clearRealtimeQueueCache();
-    window.localStorage.removeItem("pharmauto-session");
+    persistSession(false);
     setSessionState("anonymous");
     router.replace("/verify", { scroll: false });
   }

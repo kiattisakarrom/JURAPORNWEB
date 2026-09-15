@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = "http://localhost:3001/api/v1";
+const DEFAULT_API_BASE_URL = "/backend-api/api/v1";
 
 type QueryValue = string | number | boolean | null | undefined;
 
@@ -18,6 +18,12 @@ export function getApiBaseUrl() {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
 }
 
+function createApiUrl(path: string) {
+  const endpoint = `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
+  const currentOrigin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
+  return new URL(endpoint, currentOrigin);
+}
+
 export async function apiGet<T>(
   path: string,
   options: {
@@ -25,7 +31,7 @@ export async function apiGet<T>(
     signal?: AbortSignal;
   } = {},
 ): Promise<T> {
-  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const url = createApiUrl(path);
 
   Object.entries(options.query ?? {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== "") {
@@ -48,7 +54,7 @@ export async function apiGet<T>(
 }
 
 export async function apiPost<T>(path: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
-  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const url = createApiUrl(path);
   const response = await fetch(url, {
     body: JSON.stringify(body),
     cache: "no-store",
@@ -69,7 +75,7 @@ export async function apiPost<T>(path: string, body: unknown, options: { signal?
 }
 
 export async function apiPut<T>(path: string, body: unknown, options: { signal?: AbortSignal } = {}): Promise<T> {
-  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const url = createApiUrl(path);
   const response = await fetch(url, {
     body: JSON.stringify(body),
     cache: "no-store",
@@ -90,7 +96,7 @@ export async function apiPut<T>(path: string, body: unknown, options: { signal?:
 }
 
 export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
-  const url = new URL(`${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`);
+  const url = createApiUrl(path);
   const response = await fetch(url, {
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
