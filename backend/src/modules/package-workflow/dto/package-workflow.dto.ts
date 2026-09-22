@@ -44,6 +44,7 @@ export enum PackagePriorityDto {
 
 export enum DispensingPickupStatusDto {
   CALLED_WAITING = 'CALLED_WAITING',
+  MISSED_CALL = 'MISSED_CALL',
   RECEIVED = 'RECEIVED',
 }
 
@@ -207,6 +208,16 @@ export class CheckingPackagePairDto extends MatchingPackageScanDto {
 export class DispensingStatusDto extends ActorDto {
   @IsEnum(DispensingPickupStatusDto)
   status!: DispensingPickupStatusDto;
+
+  @IsUUID()
+  claimToken!: string;
+
+  @IsUUID()
+  actionId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  expectedRowVersion!: string;
 }
 
 export class PackageWorkflowsQueryDto {

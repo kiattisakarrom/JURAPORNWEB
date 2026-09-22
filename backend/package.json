@@ -32,7 +32,8 @@
     "db:workflow:cleanup:local": "node scripts/run-sql-file.js --profile local sql/002_drop_legacy_workflow_schema.sql",
     "db:seed:verify-alerts:local": "node scripts/run-sql-file.js --profile local sql/004_seed_verify_alert_test_data.sql",
     "db:verify-note:local": "node scripts/run-sql-file.js --profile local sql/008_add_verify_note_autosave.sql",
-    "db:verify-note:live": "node scripts/run-sql-file.js --profile live sql/008_add_verify_note_autosave.sql"
+    "db:verify-note:live": "node scripts/run-sql-file.js --profile live sql/008_add_verify_note_autosave.sql",
+    "db:dispensing:local": "node scripts/run-sql-file.js --profile local sql/009_dispensing_queue.sql"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

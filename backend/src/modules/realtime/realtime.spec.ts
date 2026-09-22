@@ -45,7 +45,7 @@ describe('Realtime correctness',()=>{
   });
   it('does not query prescription payloads when the committed version is unchanged',async()=>{
     const request={input:jest.fn().mockReturnThis(),query:jest.fn()
-      .mockResolvedValueOnce({recordset:[{version:'9007199254740995',ready:11,alertsReady:2}]})
+      .mockResolvedValueOnce({recordset:[{version:'9007199254740995',ready:13,alertsReady:2}]})
       .mockResolvedValueOnce({recordset:[{invalid:0}]})};
     const db={withTransaction:jest.fn(async(work: (create:()=>unknown)=>Promise<unknown>)=>work(()=>request))} as unknown as DatabaseService;
     const result=await new ChangeTrackingRepository(db).read('source','9007199254740995');
@@ -54,7 +54,7 @@ describe('Realtime correctness',()=>{
   });
   it('requires resync for a cursor older than CT retention',async()=>{
     const request={input:jest.fn().mockReturnThis(),query:jest.fn()
-      .mockResolvedValueOnce({recordset:[{version:'500',ready:11,alertsReady:2}]})
+      .mockResolvedValueOnce({recordset:[{version:'500',ready:13,alertsReady:2}]})
       .mockResolvedValueOnce({recordset:[{invalid:1}]})};
     const db={withTransaction:jest.fn(async(work:(create:()=>unknown)=>Promise<unknown>)=>work(()=>request))} as unknown as DatabaseService;
     expect((await new ChangeTrackingRepository(db).read('workflow','1')).reset).toBe(true);

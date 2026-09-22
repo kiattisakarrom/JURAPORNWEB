@@ -35,7 +35,7 @@ function PrescriptionRow({
   return (
     <div
       className={cn(
-        "grid cursor-pointer grid-cols-[110px_120px_100px_116px_150px_76px_130px_90px_minmax(200px,1fr)_88px] items-center gap-3 px-4 py-3 transition hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
+        "grid cursor-pointer grid-cols-[110px_120px_100px_116px_150px_76px_130px_90px_minmax(200px,1fr)_88px] items-center gap-3 px-4 py-3 text-center transition hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
         selectedPrescriptionId === prescription.id && "bg-blue-50 ring-1 ring-inset ring-blue-200",
       )}
       onClick={selectRow}
@@ -49,11 +49,11 @@ function PrescriptionRow({
       </span>
       <span className="font-mono text-xs font-bold text-slate-400">{prescription.date ?? patient.date ?? "—"}</span>
       <span className="font-mono text-sm font-black text-blue-700">{prescription.pn}</span>
-      <Badge className={cn("w-fit justify-self-start whitespace-nowrap", stageStyles[prescription.stage])}>
+      <Badge className={cn("w-fit justify-self-center whitespace-nowrap", stageStyles[prescription.stage])}>
         <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[prescription.stage])} />
         {stageLabel(prescription.stage)}
       </Badge>
-      <span>
+      <span className="flex justify-center">
         <ClinicalAlertBadges alerts={prescription.alerts} clinicalAlerts={prescription.clinicalAlerts} />
       </span>
       <span className="font-mono text-xs font-bold text-slate-400">{prescription.time}</span>
@@ -61,7 +61,9 @@ function PrescriptionRow({
       <span className={cn("font-mono text-sm font-bold", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)}</span>
       <span className="truncate text-sm font-bold text-slate-600">{prescription.doctor ?? patient.doctor ?? "รอข้อมูลแพทย์"}</span>
       {prescription.stage === "verify" ? (
-        <VerifyStatusCheckbox checked={isVerified} label={`สถานะ Verify PN ${prescription.pn}`} />
+        <span className="flex justify-center">
+          <VerifyStatusCheckbox checked={isVerified} label={`สถานะ Verify PN ${prescription.pn}`} />
+        </span>
       ) : (
         <span className="text-xs font-bold text-slate-400">{stageLabel(prescription.stage)}</span>
       )}
@@ -77,7 +79,7 @@ export function QueueTable({
   verifiedPrescriptionIds,
   onSelect,
   onPendingAction,
-  onPrimaryAction,
+  onSendMatching,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
@@ -86,7 +88,7 @@ export function QueueTable({
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
-  onPrimaryAction: (patient: PatientQueueItem) => void;
+  onSendMatching: (patient: PatientQueueItem) => void;
 }) {
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
 
@@ -96,61 +98,74 @@ export function QueueTable({
 
   return (
     <div className="stable-scrollbar hidden h-full min-h-0 overflow-auto md:block" data-verify-scroll-container>
-      <table className="w-full min-w-[1590px] table-fixed border-collapse text-left">
+      <table className="w-full min-w-[1590px] table-fixed border-collapse text-center">
         <colgroup>
           <col className="w-[126px]" />
-          <col className="w-[110px]" />
+          <col className="w-[66px]" />
           <col className="w-[120px]" />
-          <col className="w-[132px]" />
+          <col className="w-[80px]" />
           <col className="w-[132px]" />
           <col className="w-[220px]" />
           <col className="w-[116px]" />
           <col className="w-[168px]" />
-          <col className="w-[170px]" />
+          <col className="w-[102px]" />
           <col className="w-[150px]" />
+          <col className="w-[160px]" />
           <col className="w-[170px]" />
         </colgroup>
-        <thead className="sticky top-0 z-20 border-b border-[#e6eaf0] bg-white text-[11px] font-bold uppercase tracking-[0.07em] text-[#9aa7b8] shadow-[0_1px_0_#e6eaf0]">
+        <thead className="sticky top-0 z-20 border-b border-[#e6eaf0] bg-white text-[16px] font-bold uppercase leading-tight tracking-[0.03em] text-[#9aa7b8] shadow-[0_1px_0_#e6eaf0]">
           <tr>
-            {["Priority", "ลำดับคิว", "วันที่", "VN", "HN", "ชื่อ-นามสกุล", "จำนวน PN", "จำนวนรายการยา", "แจ้งเตือน", "เช็คลิส verify", "Pending"].map((label) => (
-              <th className="h-[42px] px-4" key={label}>{label}</th>
+            {["Prio", "คิวที่", "วันที่", "VN", "HN", "ชื่อ-นามสกุล", "จำนวน PN", "รายการยา", "แจ้งเตือน", "สถานะ", "Pending", "การทำงาน"].map((label) => (
+              <th className="h-[64px] px-2 text-center" key={label}>
+                {label}
+              </th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {isLoading ? (
-            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={11}>กำลังโหลดข้อมูล...</td></tr>
+            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={12}>กำลังโหลดข้อมูล...</td></tr>
           ) : patients.length === 0 ? (
-            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={11}>ไม่พบข้อมูลผู้ป่วย</td></tr>
+            <tr><td className="px-5 py-8 text-sm font-bold text-slate-400" colSpan={12}>ไม่พบข้อมูลผู้ป่วย</td></tr>
           ) : patients.map((patient) => {
             const prescriptions = patient.prescriptions ?? [];
             const hasPrescriptions = prescriptions.length > 0;
-            const isExpanded = expandedPatientId === patient.id;
+            const canExpand = patient.stage !== "verify" ? hasPrescriptions : prescriptions.length > 1;
+            const isExpanded = canExpand && expandedPatientId === patient.id;
             const isSelected = selectedId === patient.id;
             const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
-            const hasPrimaryAction = patient.stage === "verify" || patient.stage === "picking";
-            const activateRow = () => hasPrescriptions ? toggleExpanded(patient.id) : onSelect(patient.id);
+            const activateRow = () => {
+              if (!hasPrescriptions) return;
+              if (patient.stage === "verify" && prescriptions.length === 1) {
+                setExpandedPatientId(null);
+                onSelect(patient.id, prescriptions[0].id);
+                return;
+              }
+              toggleExpanded(patient.id);
+            };
 
             return (
               <Fragment key={patient.id}>
                 <tr
-                  aria-expanded={hasPrescriptions ? isExpanded : undefined}
+                  aria-disabled={!hasPrescriptions}
+                  aria-expanded={canExpand ? isExpanded : undefined}
                   className={cn(
-                    "cursor-pointer transition hover:bg-[#f6f9ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
+                    "transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
+                    hasPrescriptions ? "cursor-pointer hover:bg-[#f6f9ff]" : "cursor-default",
                     (isSelected || isExpanded) && "bg-[#f6f9ff]",
                   )}
                   onClick={activateRow}
                   onKeyDown={(event) => handleKeyboardActivate(event, activateRow)}
                   role="button"
-                  tabIndex={0}
+                  tabIndex={hasPrescriptions ? 0 : -1}
                 >
                   <td className={cn("h-[66px] px-4 text-sm font-black", priorityStyles[patient.priority])}>
                     <span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-current" />
                     {priorityLabel(patient.priority)}
                   </td>
-                  <td aria-label="ยังไม่มีข้อมูลลำดับคิว" className="px-4" />
+                  <td aria-label="ยังไม่มีข้อมูลลำดับคิว" className="px-2" />
                   <td className="px-4 font-mono text-xs font-bold text-slate-400">{patient.date ?? "—"}</td>
-                  <td className="px-4 font-mono text-[15px] font-black text-[#2f6bf3]">{patient.vn}</td>
+                  <td className="px-2 font-mono text-[15px] font-black text-[#2f6bf3]">{patient.vn}</td>
                   <td className="px-4 font-mono text-[14px] font-bold text-slate-500">{patient.hn}</td>
                   <td className="px-4 text-[15px] font-semibold text-[#22324a]">
                     {patient.name}
@@ -159,25 +174,16 @@ export function QueueTable({
                   </td>
                   <td className="px-4 text-sm font-black text-blue-700">{prescriptions.length} PN</td>
                   <td className="px-4 text-sm font-semibold text-[#56657a]">{patient.medicationCount} รายการ</td>
-                  <td className="px-4">
-                    <ClinicalAlertBadges alerts={patient.alerts} clinicalAlerts={patient.clinicalAlerts} />
+                  <td className="px-2">
+                    <div className="flex justify-center">
+                      <ClinicalAlertBadges alerts={patient.alerts} clinicalAlerts={patient.clinicalAlerts} />
+                    </div>
                   </td>
-                  <td className="px-4" onClick={(event) => event.stopPropagation()}>
-                    {hasPrimaryAction ? (
-                      <Button
-                        aria-label={patient.stage === "picking" ? "ส่งไป Matching" : "เปิดรายการยาเพื่อ Verify"}
-                        className={cn(
-                          "h-9 rounded-xl px-3",
-                          "bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100",
-                        )}
-                        disabled={patient.stage === "verify" ? !hasPrescriptions : !canSendToMatching}
-                        onClick={() => onPrimaryAction(patient)}
-                        title={patient.stage === "picking" ? "ข้ามการรอ Location สำหรับ MVP และส่งไป Matching" : "เปิด PN ที่ยังต้องตรวจ"}
-                        type="button"
-                      >
-                        {patient.stage === "picking" ? "ส่ง Matching" : "เปิดตรวจยา"}
-                      </Button>
-                    ) : <span className="text-sm font-bold text-slate-400">{stageLabel(patient.stage)}</span>}
+                  <td className="px-4">
+                    <Badge className={cn("mx-auto w-fit whitespace-nowrap", stageStyles[patient.stage])}>
+                      <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[patient.stage])} />
+                      {stageLabel(patient.stage)}
+                    </Badge>
                   </td>
                   <td className="px-4" onClick={(event) => event.stopPropagation()}>
                     {patient.stage === "verify" || patient.stage === "pending" ? (
@@ -197,18 +203,35 @@ export function QueueTable({
                       </Button>
                     ) : <span className="text-sm font-bold text-slate-300">—</span>}
                   </td>
+                  <td className="px-4" onClick={(event) => event.stopPropagation()}>
+                    {patient.stage === "picking" ? (
+                      <Button
+                        aria-label="ส่งไป Matching"
+                        className={cn(
+                          "h-9 rounded-xl px-3",
+                          "bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100",
+                        )}
+                        disabled={!canSendToMatching}
+                        onClick={() => onSendMatching(patient)}
+                        title="ข้ามการรอ Location สำหรับ MVP และส่งไป Matching"
+                        type="button"
+                      >
+                        ส่ง Matching
+                      </Button>
+                    ) : <span className="text-sm font-bold text-slate-300">—</span>}
+                  </td>
                 </tr>
 
                 {hasPrescriptions && isExpanded ? (
                   <tr>
-                    <td className="bg-[#f6f9ff] px-4 py-4" colSpan={11}>
+                    <td className="bg-[#f6f9ff] px-4 py-4" colSpan={12}>
                       <div className="overflow-x-auto rounded-2xl border border-blue-100 bg-white shadow-sm">
                         <div className="min-w-[1300px]">
                           <div className="border-b border-blue-100 bg-blue-50/70 px-4 py-3">
                             <div className="font-mono text-sm font-black text-blue-800">VN {patient.vn} — {patient.name}</div>
                           </div>
-                          <div className="grid grid-cols-[110px_120px_100px_116px_150px_76px_130px_90px_minmax(200px,1fr)_88px] gap-3 border-b border-blue-100 bg-blue-50/40 px-4 py-2 text-[10px] font-black uppercase tracking-[0.08em] text-blue-600">
-                            {["Priority", "วันที่", "PN", "สถานะ", "แจ้งเตือน", "เวลา", "จำนวนรายการยา", "Duration", "ชื่อแพทย์", "เช็ก"].map((label) => <span key={label}>{label}</span>)}
+                          <div className="grid grid-cols-[110px_120px_100px_116px_150px_76px_130px_90px_minmax(200px,1fr)_88px] gap-3 border-b border-blue-100 bg-blue-50/40 px-4 py-2 text-center text-[10px] font-black uppercase tracking-[0.08em] text-blue-600">
+                            {["Prio", "วันที่", "PN", "สถานะ", "แจ้งเตือน", "เวลา", "รายการยา", "Duration", "ชื่อแพทย์", "เช็ก"].map((label) => <span key={label}>{label}</span>)}
                           </div>
                           <div className="divide-y divide-slate-100">
                             {prescriptions.map((prescription) => (

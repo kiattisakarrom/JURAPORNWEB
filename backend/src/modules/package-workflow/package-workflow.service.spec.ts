@@ -1,5 +1,7 @@
+import 'reflect-metadata';
 import { DatabaseService } from '../../database/database.service';
 import { VerifyService } from '../verify/verify.service';
+import { DispensingPickupStatusDto } from './dto/package-workflow.dto';
 import { PackageWorkflowService } from './package-workflow.service';
 
 describe('PackageWorkflowService', () => {
@@ -186,5 +188,58 @@ describe('PackageWorkflowService', () => {
     expect(result).toHaveLength(1);
     expect(result[0].ITEMS[0].MEDICINECODE).toBe('1200000096');
     expect(result[0].ALLOWED_ACTIONS).toEqual(['SCAN_MEDICINE']);
+  });
+
+  it('allows only one called patient per dispensing channel', async () => {
+    const packageId = '11111111-1111-1111-1111-111111111111';
+    const workflowId = '22222222-2222-2222-2222-222222222222';
+    const requestFactory = () => ({
+      input: jest.fn().mockReturnThis(),
+      query: jest.fn().mockImplementation(async (statement: string) => {
+        if (statement.includes('SELECT DISPENSING_CHANNEL FROM dbo.TBLPACKAGEMASTER')) {
+          return { recordset: [{ DISPENSING_CHANNEL: 1 }] };
+        }
+        if (statement.includes('SELECT package.PACKAGE_ID')) {
+          return { recordset: [{
+            PACKAGE_ID: packageId, WORKFLOW_ID: workflowId, PAGE_NOW: 'DISPENSING',
+            DISPENSING_PICKUP_STATUS: 'WAITING_CALL', DISPENSING_CHANNEL: 1,
+            QUEUE_READY_AT: new Date(), ROW_VERSION: Buffer.from('revision'),
+            VISITDATETIME: new Date('2026-09-21T00:00:00.000Z'), VISITNUMBER: '1001',
+          }] };
+        }
+        if (statement.includes('FROM dbo.TBLPACKAGEEVENTS WHERE ACTION_ID')) return { recordset: [] };
+        if (statement.includes('SELECT CLAIM_ID FROM dbo.TBLDISPENSINGCHANNELCLAIMS')) {
+          return { recordset: [{ CLAIM_ID: '33333333-3333-3333-3333-333333333333' }] };
+        }
+        if (statement.includes("activePackage.DISPENSING_PICKUP_STATUS='CALLED_WAITING'")) {
+          expect(statement).toContain('activePackage.QUEUE_READY_AT IS NOT NULL');
+          return { recordset: [{ VISITNUMBER: '0999' }] };
+        }
+        return { recordset: [] };
+      }),
+    });
+    const databaseService = {
+      withTransaction: jest.fn().mockImplementation(async (work) => work(requestFactory)),
+    } as unknown as DatabaseService;
+    const service = new PackageWorkflowService(databaseService, {} as VerifyService);
+
+    await expect(service.updateDispensingStatus(packageId, {
+      status: DispensingPickupStatusDto.CALLED_WAITING,
+      claimToken: '44444444-4444-4444-8444-444444444444',
+      actionId: '55555555-5555-4555-8555-555555555555',
+      expectedRowVersion: Buffer.from('revision').toString('base64'),
+    })).rejects.toThrow('ช่องนี้กำลังเรียก VN 0999 กรุณาจ่ายยาหรือกด Missed-call ก่อน');
+  });
+
+  it('allows a missed-call patient to be called again', () => {
+    const service = new PackageWorkflowService({} as DatabaseService, {} as VerifyService);
+    const actions = (service as unknown as {
+      allowedPackageActions: (value: {
+        PAGE_NOW: string; DISPENSING_PICKUP_STATUS: string; ITEMS: never[];
+      }) => string[];
+    }).allowedPackageActions({
+      PAGE_NOW: 'DISPENSING', DISPENSING_PICKUP_STATUS: 'MISSED_CALL', ITEMS: [],
+    });
+    expect(actions).toEqual(['CALL_PATIENT']);
   });
 });

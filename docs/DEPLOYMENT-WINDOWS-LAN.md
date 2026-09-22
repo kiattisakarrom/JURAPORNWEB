@@ -29,7 +29,7 @@ cd C:\JurapornWeb\frontend
 npm ci
 ```
 
-`db:bundle` สร้าง `backend\sql\JurapornWeb_install_fullstack.sql` จาก 001, 005, 003 และ 006 โดยอัตโนมัติ ห้ามแก้ไฟล์รวมโดยตรง ให้แก้ migration ต้นฉบับแล้วสร้าง bundle ใหม่
+`db:bundle` สร้าง `backend\sql\JurapornWeb_install_fullstack.sql` จาก 001, 005, 009, 003 และ 006 โดยอัตโนมัติ ห้ามแก้ไฟล์รวมโดยตรง ให้แก้ migration ต้นฉบับแล้วสร้าง bundle ใหม่
 
 บนเครื่องพัฒนา Local ที่ SQL account มีสิทธิ์สร้างฐานชั่วคราว สามารถทดสอบ first install และรันซ้ำกับฐานโครงสร้างเปล่าที่สร้าง/ลบอัตโนมัติได้ด้วย `npm run db:install:test:local` สคริปต์ปฏิเสธ DB host ที่ไม่ใช่ localhost
 
@@ -48,6 +48,9 @@ npm ci
 NODE_ENV=production
 DB_PROFILE=local
 PACKAGE_WORKFLOW_ENABLED=true
+HOSPITAL_QUEUE_CALLBACK_ENABLED=false
+DISPENSING_ADMIN_USERNAME=CHANGE_ME
+DISPENSING_ADMIN_PASSWORD=CHANGE_ME
 PORT=3001
 CORS_ORIGINS=http://PHARMA-SERVER:3000,http://192.168.1.50:3000
 
@@ -94,23 +97,30 @@ npm run db:install:local
 3. เชื่อมต่อด้วย Installer account แล้ว Execute
 4. ต้องเห็นข้อความ `JurapornWeb full-stack database installation and validation completed successfully.`
 
-Installer ตรวจ source table/column, Primary Key, สิทธิ์, legacy schema ก่อนแก้ฐาน จากนั้นสร้าง Package Workflow, เปิด Snapshot Isolation/Change Tracking, สร้าง helper table/trigger และ validate ผลท้ายไฟล์ ไฟล์รันซ้ำได้และไม่ insert seed
+Installer ตรวจ source table/column, Primary Key, สิทธิ์, legacy schema ก่อนแก้ฐาน จากนั้นสร้าง Package Workflow, เปิด Snapshot Isolation/Change Tracking, สร้าง helper table/trigger และตารางคิวจ่ายยา 8 ช่อง ก่อน validate ผลท้ายไฟล์ ไฟล์รันซ้ำได้และไม่ insert seed
 
 หลังติดตั้งควรพบ:
 
 - Workflow 5 ตาราง: `TBLWORKFLOWMASTER`, `TBLPACKAGEPRESCRIPTIONS`, `TBLPACKAGEMASTER`, `TBLPACKAGEITEMS`, `TBLPACKAGEEVENTS`
 - NOTE draft 3 คอลัมน์ใน `TBLWORKFLOWMASTER`
 - Realtime helper 1 ตาราง: `TBLREALTIMEINVALIDATIONS`
-- Change Tracking 11 ตาราง
+- Dispensing 2 ตาราง: `TBLHOSPITALQUEUESTEP`, `TBLDISPENSINGCHANNELCLAIMS`
+- Change Tracking 13 ตาราง
 - Trigger 2 ตัว: `TR_TBLALLERGY_Realtime`, `TR_DrugInteraction_Realtime`
 - `ALLOW_SNAPSHOT_ISOLATION = ON`
+
+Callback โรงพยาบาลยังปิดอยู่ตามค่าเริ่มต้น เปิด `HOSPITAL_QUEUE_CALLBACK_ENABLED=true`
+เฉพาะหลังตรวจ VPN/firewall และทดสอบ `POST /api/hospital/queue/step-id` แล้ว
+endpoint นี้ยังไม่มี token จึงห้ามเปิดพอร์ต 3001 สู่อินเทอร์เน็ต ดู
+[คู่มือคิวจ่ายยา](./DISPENSING-QUEUE.md) สำหรับวิธีปลดช่องค้างและข้อจำกัด API โรงพยาบาล
 
 ### สิทธิ์ Runtime
 
 ให้ DBA กำหนด least privilege ตามตารางที่ Backend ใช้จริง โดยหลักคือ:
 
 - `SELECT` ตารางต้นทาง/ตารางอ้างอิงและตาราง workflow
-- `INSERT`/`UPDATE` เฉพาะตาราง workflow/package/event ที่ API เขียน
+- `INSERT`/`UPDATE` เฉพาะตาราง workflow/package/event และตารางคิวจ่ายยา
+  `TBLHOSPITALQUEUESTEP`, `TBLDISPENSINGCHANNELCLAIMS` ที่ API เขียน
 - `VIEW CHANGE TRACKING` และ `SELECT` บนตารางที่เปิด Change Tracking
 - ไม่ให้ `ALTER DATABASE`, `ALTER TABLE`, `CREATE TABLE`, `CONTROL`, `db_owner` หรือ `sysadmin`
 
@@ -219,7 +229,7 @@ C:\JurapornWeb\deploy\windows\start-frontend.cmd
 - [ ] Installer account ผ่าน preflight
 - [ ] `npm run db:install:local` สำเร็จ และรันซ้ำได้
 - [ ] เปลี่ยน `.env.local` กลับเป็น Runtime account ที่ไม่ใช่ DBA
-- [ ] Workflow 5 ตาราง, NOTE, CT 11 ตาราง, trigger 2 ตัว และ Snapshot Isolation ผ่าน validation
+- [ ] Workflow 5 ตาราง, Dispensing 2 ตาราง, NOTE, CT 13 ตาราง, trigger 2 ตัว และ Snapshot Isolation ผ่าน validation
 - [ ] ไม่ได้รัน 004 seed บน Live
 - [ ] Backend lint/test/build ผ่าน
 - [ ] Frontend lint/test/build ผ่านหลังตั้ง LAN API URL

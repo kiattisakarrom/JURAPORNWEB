@@ -98,8 +98,8 @@ npm run dev
 ### นำไปใช้ Live ภายหลังด้วยตนเอง
 
 1. สำรอง DB และตรวจ schema/สิทธิ์กับ DBA ก่อน ไม่รันชุดทดสอบที่สร้างข้อมูลสังเคราะห์บน Live
-2. ถ้ามี source และ package workflow schema เดิมครบแล้ว รัน **005 แล้ว 006** ใน database ที่เลือกใน SSMS
-3. ถ้ายังไม่มี package schema ให้เตรียม `001_create_package_workflow_schema.sql` และตรวจด้วย `003_validate_package_workflow.sql` ก่อน 005; ไม่ต้องนำ 002 ไป drop ข้อมูลโดยอัตโนมัติ
+2. ถ้ามี source และ package workflow schema เดิมครบแล้ว รัน **005 แล้ว 009 แล้ว 006** ใน database ที่เลือกใน SSMS; 009 เพิ่ม CT ของคิวจ่ายยา
+3. ถ้ายังไม่มี package schema ให้เตรียม `001_create_package_workflow_schema.sql` ก่อน 005/009 แล้วตรวจด้วย `003_validate_package_workflow.sql` และ `006_validate_realtime_sync.sql` หลังติดตั้งครบ; ไม่ต้องนำ 002 ไป drop ข้อมูลโดยอัตโนมัติ
 4. Deploy Backend/Frontend รุ่นนี้พร้อมกัน เพราะ Verify ต้องส่ง `expectedSourceRevision`
 5. เริ่ม Backend เพียงหนึ่ง instance ด้วย profile Live แล้วตรวจ SSE/CT/คิวและ latency
 

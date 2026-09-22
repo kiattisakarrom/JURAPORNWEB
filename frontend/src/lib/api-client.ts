@@ -18,7 +18,7 @@ export function getApiBaseUrl() {
   return (process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL).replace(/\/$/, "");
 }
 
-function createApiUrl(path: string) {
+export function createApiUrl(path: string) {
   const endpoint = `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
   const currentOrigin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
   return new URL(endpoint, currentOrigin);

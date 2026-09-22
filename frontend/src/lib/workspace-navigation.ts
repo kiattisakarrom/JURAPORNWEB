@@ -12,6 +12,8 @@ export const workspacePathByScreen: Record<WorkspaceScreen, string> = {
 
 const screenByPath = new Map(Object.entries(workspacePathByScreen).map(([screen, pathname]) => [pathname, screen as WorkspaceScreen]));
 const verifyTabs = new Set<QueueStage>(["all", "verify", "picking", "matching", "checking", "dispensing", "pending", "complete", "missed-call"]);
+export type DispensingTab = "station" | "assist" | "history";
+const dispensingTabs = new Set<DispensingTab>(["station", "assist", "history"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type WorkspacePopupTarget =
@@ -20,6 +22,7 @@ export type WorkspacePopupTarget =
 
 export type WorkspaceNavigationState = {
   tab: QueueStage;
+  dispensingTab: DispensingTab;
   fromDate: string;
   toDate: string;
   popup: WorkspacePopupTarget | null;
@@ -35,6 +38,7 @@ export function parseWorkspaceNavigation(search: string, fallbackDate: string): 
   const params = new URLSearchParams(search);
   const rawTab = params.get("tab");
   const tab = rawTab && verifyTabs.has(rawTab as QueueStage) ? rawTab as QueueStage : "verify";
+  const dispensingTab = rawTab && dispensingTabs.has(rawTab as DispensingTab) ? rawTab as DispensingTab : "station";
   const rawFromDate = params.get("from");
   const rawToDate = params.get("to");
   const hasValidDates = isIsoDate(rawFromDate) && isIsoDate(rawToDate) && rawFromDate <= rawToDate;
@@ -56,12 +60,13 @@ export function parseWorkspaceNavigation(search: string, fallbackDate: string): 
 
   return {
     tab,
+    dispensingTab,
     fromDate,
     toDate,
     popup,
     needsCleanup:
       hasUnknownKeys
-      || (rawTab !== null && !verifyTabs.has(rawTab as QueueStage))
+      || (rawTab !== null && !verifyTabs.has(rawTab as QueueStage) && !dispensingTabs.has(rawTab as DispensingTab))
       || !hasValidDates
       || hasInvalidPopup,
   };
@@ -70,18 +75,21 @@ export function parseWorkspaceNavigation(search: string, fallbackDate: string): 
 export function buildWorkspaceHref({
   screen,
   tab = "verify",
+  dispensingTab = "station",
   fromDate,
   toDate,
   popup = null,
 }: {
   screen: WorkspaceScreen;
   tab?: QueueStage;
+  dispensingTab?: DispensingTab;
   fromDate: string;
   toDate: string;
   popup?: WorkspacePopupTarget | null;
 }) {
   const params = new URLSearchParams();
   if (screen === "verify") params.set("tab", verifyTabs.has(tab) ? tab : "verify");
+  if (screen === "dispensing") params.set("tab", dispensingTabs.has(dispensingTab) ? dispensingTab : "station");
   params.set("from", fromDate);
   params.set("to", toDate);
   if (screen === "verify" && popup) {

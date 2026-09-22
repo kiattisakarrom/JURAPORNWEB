@@ -6,6 +6,8 @@ import { PackageWorkflowModule } from './modules/package-workflow/package-workfl
 import { PatientModule } from './modules/patient/patient.module';
 import { VerifyModule } from './modules/verify/verify.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { HospitalCallbackTestModule } from './modules/hospital-callback-test/hospital-callback-test.module';
+import { DispensingModule } from './modules/dispensing/dispensing.module';
 
 const databaseProfile = process.env.DB_PROFILE ?? 'local';
 
@@ -22,6 +24,8 @@ const databaseProfile = process.env.DB_PROFILE ?? 'local';
     PackageWorkflowModule,
     PatientModule,
     RealtimeModule,
+    DispensingModule,
+    HospitalCallbackTestModule,
   ],
 })
 export class AppModule {}

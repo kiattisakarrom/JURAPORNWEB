@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -42,6 +43,24 @@ class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   CORS_ORIGINS = 'http://localhost:3000';
+
+  @Transform(toBoolean)
+  @IsBoolean()
+  HOSPITAL_CALLBACK_TEST_ENABLED = false;
+
+  @Transform(toBoolean)
+  @IsBoolean()
+  HOSPITAL_QUEUE_CALLBACK_ENABLED = false;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  DISPENSING_ADMIN_USERNAME?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  DISPENSING_ADMIN_PASSWORD?: string;
 
   @IsString()
   @IsNotEmpty()

@@ -145,6 +145,9 @@ interface PackageIdentityRow {
   WORKFLOW_ID: string;
   PAGE_NOW: string;
   DISPENSING_PICKUP_STATUS: string | null;
+  DISPENSING_CHANNEL: number | null;
+  QUEUE_READY_AT: Date | string | null;
+  ROW_VERSION: Buffer;
   VISITDATETIME: Date | string;
   VISITNUMBER: string;
 }
@@ -890,6 +893,20 @@ export class PackageWorkflowService {
     body: PackageTransitionDto,
   ): Promise<PackageResponse> {
     await this.databaseService.withTransaction(async (createRequest) => {
+      if (body.action === PackageTransitionActionDto.SEND_TO_DISPENSING) {
+        const visitRequest = createRequest();
+        visitRequest.input('packageId', sql.UniqueIdentifier, packageId);
+        const visit = await visitRequest.query<{ VISITDATETIME: Date; VISITNUMBER: string }>(`
+          SELECT w.VISITDATETIME,w.VISITNUMBER FROM dbo.TBLPACKAGEMASTER p
+          JOIN dbo.TBLWORKFLOWMASTER w ON w.WORKFLOW_ID=p.WORKFLOW_ID WHERE p.PACKAGE_ID=@packageId;
+        `);
+        if (!visit.recordset[0]) throw new NotFoundException('Package was not found');
+        const lock = createRequest();
+        lock.input('resource', sql.NVarChar(255), `dispensing-ready:${this.toDateOnly(visit.recordset[0].VISITDATETIME)}:${visit.recordset[0].VISITNUMBER}`);
+        await lock.query(`DECLARE @result int; EXEC @result=sys.sp_getapplock @Resource=@resource,
+          @LockMode='Exclusive',@LockOwner='Transaction',@LockTimeout=10000;
+          IF @result<0 THROW 51000,'Dispensing readiness is busy; retry',1;`);
+      }
       const packageRow = await this.lockPackage(createRequest, packageId);
       const actorName = body.actorName ?? 'MVP user';
       if (
@@ -959,18 +976,39 @@ export class PackageWorkflowService {
         request.input('actorName', sql.NVarChar(150), actorName);
         await request.query(`
           UPDATE package
-          SET PAGE_NOW = CASE WHEN workflow.PAYMENT_STATUS IN ('PAID','BYPASSED')
+          SET PAGE_NOW = CASE WHEN step.STEP_ID = '04' AND
+                (step.APPLIED_WORKFLOW_ID = workflow.WORKFLOW_ID OR
+                  (step.APPLIED_WORKFLOW_ID IS NULL AND (workflow.WORKFLOW_RUN_NO=1 OR step.FIRST_READY_AT>=workflow.CREATED_AT)))
                 THEN 'DISPENSING' ELSE 'AWAITING_DISPENSING' END,
               CHECKED_BY = @actorName,
               CHECKING_COMPLETED_AT = SYSUTCDATETIME(),
+              DISPENSING_CHANNEL = 1,
+              QUEUE_READY_AT = CASE WHEN step.STEP_ID = '04' AND
+                (step.APPLIED_WORKFLOW_ID = workflow.WORKFLOW_ID OR
+                  (step.APPLIED_WORKFLOW_ID IS NULL AND (workflow.WORKFLOW_RUN_NO=1 OR step.FIRST_READY_AT>=workflow.CREATED_AT)))
+                THEN SYSUTCDATETIME() ELSE NULL END,
               DISPENSING_PICKUP_STATUS = CASE
-                WHEN workflow.PAYMENT_STATUS IN ('PAID','BYPASSED') THEN 'WAITING_CALL'
+                WHEN step.STEP_ID = '04' AND
+                  (step.APPLIED_WORKFLOW_ID = workflow.WORKFLOW_ID OR
+                    (step.APPLIED_WORKFLOW_ID IS NULL AND (workflow.WORKFLOW_RUN_NO=1 OR step.FIRST_READY_AT>=workflow.CREATED_AT)))
+                  THEN 'WAITING_CALL'
                 ELSE NULL END,
               UPDATED_AT = SYSUTCDATETIME()
           FROM dbo.TBLPACKAGEMASTER AS package
           JOIN dbo.TBLWORKFLOWMASTER AS workflow
             ON workflow.WORKFLOW_ID = package.WORKFLOW_ID
+          LEFT JOIN dbo.TBLHOSPITALQUEUESTEP AS step
+            ON step.VISIT_DATE = workflow.VISITDATETIME AND step.VN = workflow.VISITNUMBER
           WHERE package.PACKAGE_ID = @packageId;
+
+          UPDATE step SET APPLIED_WORKFLOW_ID = workflow.WORKFLOW_ID
+          FROM dbo.TBLHOSPITALQUEUESTEP AS step
+          JOIN dbo.TBLWORKFLOWMASTER AS workflow
+            ON workflow.VISITDATETIME = step.VISIT_DATE AND workflow.VISITNUMBER = step.VN
+          JOIN dbo.TBLPACKAGEMASTER AS package
+            ON package.WORKFLOW_ID = workflow.WORKFLOW_ID
+          WHERE package.PACKAGE_ID = @packageId AND package.PAGE_NOW = 'DISPENSING'
+            AND (step.APPLIED_WORKFLOW_ID IS NULL OR step.APPLIED_WORKFLOW_ID = workflow.WORKFLOW_ID);
         `);
         await this.insertTransitionEvent(
           createRequest,
@@ -1134,17 +1172,82 @@ export class PackageWorkflowService {
     body: DispensingStatusDto,
   ): Promise<PackageResponse> {
     await this.databaseService.withTransaction(async (createRequest) => {
+      const channelRequest = createRequest();
+      channelRequest.input('packageId', sql.UniqueIdentifier, packageId);
+      const preliminary = await channelRequest.query<{ DISPENSING_CHANNEL: number | null }>(`
+        SELECT DISPENSING_CHANNEL FROM dbo.TBLPACKAGEMASTER WHERE PACKAGE_ID = @packageId;
+      `);
+      if (!preliminary.recordset[0]) throw new NotFoundException('Package was not found');
+      const channelAtRequest = preliminary.recordset[0].DISPENSING_CHANNEL;
+      const channelLock = createRequest();
+      channelLock.input('resource', sql.NVarChar(255), `dispensing-call:channel:${channelAtRequest ?? 0}`);
+      await channelLock.query(`
+        DECLARE @result int;
+        EXEC @result = sys.sp_getapplock @Resource=@resource,
+          @LockMode='Exclusive', @LockOwner='Transaction', @LockTimeout=10000;
+        IF @result < 0 THROW 51000,'Dispensing channel is busy; retry',1;
+      `);
       const packageRow = await this.lockPackage(createRequest, packageId);
+      if (packageRow.DISPENSING_CHANNEL !== channelAtRequest) {
+        throw new ConflictException('ช่องจ่ายยาของรายการเปลี่ยนแล้ว กรุณาโหลดใหม่');
+      }
+      const replayRequest = createRequest();
+      replayRequest.input('actionId', sql.UniqueIdentifier, body.actionId);
+      const replay = await replayRequest.query<{ PACKAGE_ID: string | null; EVENT_TYPE: string }>(`
+        SELECT PACKAGE_ID, EVENT_TYPE FROM dbo.TBLPACKAGEEVENTS WHERE ACTION_ID = @actionId;
+      `);
+      if (replay.recordset[0]) {
+        const expectedEvent = body.status === DispensingPickupStatusDto.CALLED_WAITING
+          ? 'PATIENT_CALLED' : body.status === DispensingPickupStatusDto.MISSED_CALL
+            ? 'PATIENT_MISSED' : 'PATIENT_RECEIVED';
+        if (replay.recordset[0].PACKAGE_ID?.toLowerCase() !== packageId.toLowerCase()
+          || replay.recordset[0].EVENT_TYPE !== expectedEvent) {
+          throw new ConflictException('Action ID was already used for another command');
+        }
+        return;
+      }
       if (packageRow.PAGE_NOW !== 'DISPENSING') {
         throw new ConflictException('Package is not in Dispensing');
       }
+      if (!packageRow.QUEUE_READY_AT || !packageRow.DISPENSING_CHANNEL) {
+        throw new ConflictException('ต้องรอการเงิน/ประกันยืนยันพร้อมรับยาก่อน');
+      }
+      if (Buffer.from(packageRow.ROW_VERSION).toString('base64') !== body.expectedRowVersion) {
+        throw new ConflictException('ข้อมูลคิวเปลี่ยนแล้ว กรุณาโหลดใหม่');
+      }
+      const claimRequest = createRequest();
+      claimRequest.input('channel', sql.TinyInt, packageRow.DISPENSING_CHANNEL);
+      claimRequest.input('tokenHash', sql.VarBinary(32), createHash('sha256').update(body.claimToken).digest());
+      const claim = await claimRequest.query<{ CLAIM_ID: string }>(`
+        SELECT CLAIM_ID FROM dbo.TBLDISPENSINGCHANNELCLAIMS WITH (UPDLOCK, HOLDLOCK)
+        WHERE CHANNEL_NO = @channel AND CLAIM_TOKEN_HASH = @tokenHash AND RELEASED_AT IS NULL;
+      `);
+      if (!claim.recordset[0]) throw new ConflictException('ช่องจ่ายยานี้ถูกปล่อยหรือถือครองโดยเครื่องอื่น');
       const actorName = body.actorName ?? 'MVP user';
       if (body.status === DispensingPickupStatusDto.CALLED_WAITING) {
         if (
           packageRow.DISPENSING_PICKUP_STATUS !== 'WAITING_CALL' &&
+          packageRow.DISPENSING_PICKUP_STATUS !== 'MISSED_CALL' &&
           packageRow.DISPENSING_PICKUP_STATUS !== 'CALLED_WAITING'
         ) {
           throw new ConflictException('Package cannot call the patient now');
+        }
+        const activeCallRequest = createRequest();
+        activeCallRequest.input('packageId', sql.UniqueIdentifier, packageId);
+        activeCallRequest.input('channel', sql.TinyInt, packageRow.DISPENSING_CHANNEL);
+        const activeCall = await activeCallRequest.query<{ VISITNUMBER: string }>(`
+          SELECT TOP (1) workflow.VISITNUMBER
+          FROM dbo.TBLPACKAGEMASTER AS activePackage
+          JOIN dbo.TBLWORKFLOWMASTER AS workflow ON workflow.WORKFLOW_ID=activePackage.WORKFLOW_ID
+          WHERE activePackage.DISPENSING_CHANNEL=@channel
+            AND activePackage.PACKAGE_ID<>@packageId
+            AND activePackage.IS_ACTIVE=1
+            AND activePackage.PAGE_NOW='DISPENSING'
+            AND activePackage.QUEUE_READY_AT IS NOT NULL
+            AND activePackage.DISPENSING_PICKUP_STATUS='CALLED_WAITING';
+        `);
+        if (activeCall.recordset[0]) {
+          throw new ConflictException(`ช่องนี้กำลังเรียก VN ${activeCall.recordset[0].VISITNUMBER} กรุณาจ่ายยาหรือกด Missed-call ก่อน`);
         }
         const request = createRequest();
         request.input('packageId', sql.UniqueIdentifier, packageId);
@@ -1153,6 +1256,7 @@ export class PackageWorkflowService {
           UPDATE dbo.TBLPACKAGEMASTER
           SET DISPENSING_PICKUP_STATUS = 'CALLED_WAITING',
               CALL_COUNT = CALL_COUNT + 1, LAST_CALLED_AT = SYSUTCDATETIME(),
+              MISSED_AT = NULL,
               DISPENSED_BY = @actorName, UPDATED_AT = SYSUTCDATETIME()
           WHERE PACKAGE_ID = @packageId;
         `);
@@ -1160,8 +1264,28 @@ export class PackageWorkflowService {
           workflowId: packageRow.WORKFLOW_ID,
           packageId,
           eventType: 'PATIENT_CALLED',
+          actionId: body.actionId,
           result: 'SUCCESS',
           actorName,
+          workstationCode: body.workstationCode,
+        });
+        return;
+      }
+
+      if (body.status === DispensingPickupStatusDto.MISSED_CALL) {
+        if (packageRow.DISPENSING_PICKUP_STATUS !== 'CALLED_WAITING') {
+          throw new ConflictException('ต้องเรียกผู้ป่วยก่อนบันทึก Missed-call');
+        }
+        const request = createRequest();
+        request.input('packageId', sql.UniqueIdentifier, packageId);
+        await request.query(`
+          UPDATE dbo.TBLPACKAGEMASTER SET DISPENSING_PICKUP_STATUS='MISSED_CALL',
+            MISSED_AT=SYSUTCDATETIME(), UPDATED_AT=SYSUTCDATETIME()
+          WHERE PACKAGE_ID=@packageId;
+        `);
+        await this.insertEvent(createRequest, {
+          workflowId: packageRow.WORKFLOW_ID, packageId, eventType: 'PATIENT_MISSED',
+          actionId: body.actionId, result: 'SUCCESS', actorName,
           workstationCode: body.workstationCode,
         });
         return;
@@ -1234,6 +1358,7 @@ export class PackageWorkflowService {
         workflowId: packageRow.WORKFLOW_ID,
         packageId,
         eventType: 'PATIENT_RECEIVED',
+        actionId: body.actionId,
         fromPage: 'DISPENSING',
         toPage: 'COMPLETE',
         result: 'SUCCESS',
@@ -1631,7 +1756,8 @@ export class PackageWorkflowService {
     request.input('packageId', sql.UniqueIdentifier, packageId);
     const result = await request.query<PackageIdentityRow>(`
       SELECT package.PACKAGE_ID, package.WORKFLOW_ID, package.PAGE_NOW,
-        package.DISPENSING_PICKUP_STATUS, workflow.VISITDATETIME,
+        package.DISPENSING_PICKUP_STATUS, package.DISPENSING_CHANNEL,
+        package.QUEUE_READY_AT, package.ROW_VERSION, workflow.VISITDATETIME,
         workflow.VISITNUMBER
       FROM dbo.TBLPACKAGEMASTER AS package WITH (UPDLOCK, HOLDLOCK)
       JOIN dbo.TBLWORKFLOWMASTER AS workflow
@@ -1701,6 +1827,7 @@ export class PackageWorkflowService {
       actorName?: string;
       workstationCode?: string;
       eventData?: string;
+      actionId?: string;
     },
   ): Promise<void> {
     const request = createRequest();
@@ -1718,15 +1845,16 @@ export class PackageWorkflowService {
     request.input('actorName', sql.NVarChar(150), event.actorName ?? 'MVP user');
     request.input('workstationCode', sql.VarChar(100), event.workstationCode ?? null);
     request.input('eventData', sql.NVarChar(sql.MAX), event.eventData ?? null);
+    request.input('actionId', sql.UniqueIdentifier, event.actionId ?? null);
     await request.query(`
       INSERT INTO dbo.TBLPACKAGEEVENTS (
         WORKFLOW_ID, PACKAGE_ID, PACKAGE_ITEM_ID, EVENT_TYPE,
         FROM_PAGE, TO_PAGE, SCAN_TYPE, SCANNED_VALUE, EXPECTED_VALUE,
-        RESULT, FAILURE_REASON, ACTOR_NAME, WORKSTATION_CODE, EVENT_DATA
+        RESULT, FAILURE_REASON, ACTOR_NAME, WORKSTATION_CODE, EVENT_DATA, ACTION_ID
       ) VALUES (
         @workflowId, @packageId, @packageItemId, @eventType,
         @fromPage, @toPage, @scanType, @scannedValue, @expectedValue,
-        @result, @failureReason, @actorName, @workstationCode, @eventData
+        @result, @failureReason, @actorName, @workstationCode, @eventData, @actionId
       );
     `);
   }
@@ -1961,8 +2089,9 @@ export class PackageWorkflowService {
         return ['CALL_PATIENT'];
       }
       if (packageResponse.DISPENSING_PICKUP_STATUS === 'CALLED_WAITING') {
-        return ['CALL_PATIENT', 'MARK_RECEIVED'];
+        return ['CALL_PATIENT', 'MARK_MISSED', 'MARK_RECEIVED'];
       }
+      if (packageResponse.DISPENSING_PICKUP_STATUS === 'MISSED_CALL') return ['CALL_PATIENT'];
     }
     return [];
   }

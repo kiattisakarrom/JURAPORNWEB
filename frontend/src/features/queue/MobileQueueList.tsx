@@ -24,7 +24,7 @@ export function MobileQueueList({
   verifiedPrescriptionIds,
   onSelect,
   onPendingAction,
-  onPrimaryAction,
+  onSendMatching,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
@@ -32,7 +32,7 @@ export function MobileQueueList({
   verifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
-  onPrimaryAction: (patient: PatientQueueItem) => void;
+  onSendMatching: (patient: PatientQueueItem) => void;
 }) {
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
 
@@ -46,20 +46,33 @@ export function MobileQueueList({
       {patients.map((patient) => {
         const prescriptions = patient.prescriptions ?? [];
         const hasPrescriptions = prescriptions.length > 0;
-        const isExpanded = expandedPatientId === patient.id;
+        const canExpand = patient.stage !== "verify" ? hasPrescriptions : prescriptions.length > 1;
+        const isExpanded = canExpand && expandedPatientId === patient.id;
         const isSelected = selectedId === patient.id;
         const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
-        const activateCard = () => hasPrescriptions ? toggleExpanded(patient.id) : onSelect(patient.id);
+        const activateCard = () => {
+          if (!hasPrescriptions) return;
+          if (patient.stage === "verify" && prescriptions.length === 1) {
+            setExpandedPatientId(null);
+            onSelect(patient.id, prescriptions[0].id);
+            return;
+          }
+          toggleExpanded(patient.id);
+        };
 
         return (
           <article className={cn("overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm", (isSelected || isExpanded) && "border-blue-300 bg-blue-50")} key={patient.id}>
             <div
-              aria-expanded={hasPrescriptions ? isExpanded : undefined}
-              className="w-full cursor-pointer p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+              aria-disabled={!hasPrescriptions}
+              aria-expanded={canExpand ? isExpanded : undefined}
+              className={cn(
+                "w-full p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500",
+                hasPrescriptions ? "cursor-pointer" : "cursor-default",
+              )}
               onClick={activateCard}
               onKeyDown={(event) => handleKeyboardActivate(event, activateCard)}
               role="button"
-              tabIndex={0}
+              tabIndex={hasPrescriptions ? 0 : -1}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -72,6 +85,7 @@ export function MobileQueueList({
                 <div className="shrink-0 text-right">
                   <span className={cn("text-sm font-black", priorityStyles[patient.priority])}>{priorityLabel(patient.priority)}</span>
                   <div className="mt-1 text-[11px] font-bold text-slate-400">วันที่ {patient.date ?? "—"}</div>
+                  <Badge className={cn("mt-2 w-fit whitespace-nowrap", stageStyles[patient.stage])}>{stageLabel(patient.stage)}</Badge>
                 </div>
               </div>
 
@@ -93,19 +107,19 @@ export function MobileQueueList({
                   emptyLabel="ไม่มีแจ้งเตือน"
                 />
                 <div className="flex flex-wrap justify-end gap-2" onClick={(event) => event.stopPropagation()}>
-                  {patient.stage === "verify" || patient.stage === "picking" ? (
+                  {patient.stage === "picking" ? (
                     <Button
-                      aria-label={patient.stage === "picking" ? "ส่ง Matching" : "เปิดรายการยาเพื่อ Verify"}
+                      aria-label="ส่ง Matching"
                       className={cn(
                         "h-9 rounded-xl px-3",
                         "bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100",
                       )}
-                      disabled={patient.stage === "verify" ? !hasPrescriptions : !canSendToMatching}
-                      onClick={() => onPrimaryAction(patient)}
-                      title={patient.stage === "picking" ? "ส่งไป Matching" : "เปิด PN ที่ยังต้องตรวจ"}
+                      disabled={!canSendToMatching}
+                      onClick={() => onSendMatching(patient)}
+                      title="ส่งไป Matching"
                       type="button"
                     >
-                      {patient.stage === "picking" ? "ส่ง Matching" : "เปิดตรวจยา"}
+                      ส่ง Matching
                     </Button>
                   ) : null}
                   {patient.stage === "verify" || patient.stage === "pending" ? (

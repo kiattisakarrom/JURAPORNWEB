@@ -8,7 +8,7 @@ import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
-import { DispensingQueueScreen } from "@/features/dispensing/DispensingQueueScreen";
+import { DispensingQueueScreen, hasDispensingChannelClaim } from "@/features/dispensing/DispensingQueueScreen";
 import { MedicationErrorScreen } from "@/features/medication-error/MedicationErrorScreen";
 import { SidebarNav } from "@/features/shell/SidebarNav";
 import { WorkspaceHeader, type WorkspaceDateRange } from "@/features/shell/WorkspaceHeader";
@@ -44,6 +44,7 @@ import {
   popupCloseMode,
   workspaceScreenFromPathname,
   type WorkspacePopupTarget,
+  type DispensingTab,
 } from "@/lib/workspace-navigation";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
@@ -245,6 +246,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     return buildWorkspaceHref({
       screen,
       tab,
+      dispensingTab: navigation.dispensingTab,
       fromDate: range.fromDate,
       toDate: range.toDate,
       popup,
@@ -278,6 +280,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     panelOpenedByAppRef.current = false;
     closingPopupRef.current = true;
     router.push(workspaceHref(screen, "verify"), { scroll: false });
+  }
+
+  function selectDispensingTab(tab: DispensingTab) {
+    router.push(buildWorkspaceHref({ screen: "dispensing", dispensingTab: tab,
+      fromDate: dateRange.fromDate, toDate: dateRange.toDate }), { scroll: false });
   }
 
   function selectQueueItem(id: string, prescriptionId?: string, source: "ui" | "url" = "ui") {
@@ -521,17 +528,12 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     router.replace(workspaceHref("verify", activeTab, dateRange, popup), { scroll: false });
   }
 
-  async function runPrimaryAction(patient: PatientQueueItem) {
+  async function runSendMatching(patient: PatientQueueItem) {
     if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
     try {
-      if (patient.stage === "verify") {
-        const prescription = patient.prescriptions?.find((item) => item.verifyStatus !== "PACKAGED") ?? patient.prescriptions?.[0];
-        if (prescription) selectQueueItem(patient.id, prescription.id);
-        return;
-      } else if (patient.stage === "picking" && patient.packageId) {
-        await transitionPackage(patient.packageId, "SEND_TO_MATCHING");
-        toast.success(`VN ${patient.vn} ส่งไป Matching แล้ว (MVP ข้ามการรอ Location)`);
-      }
+      if (patient.stage !== "picking" || !patient.packageId) return;
+      await transitionPackage(patient.packageId, "SEND_TO_MATCHING");
+      toast.success(`VN ${patient.vn} ส่งไป Matching แล้ว (MVP ข้ามการรอ Location)`);
       await refreshPackageData();
     } catch (error) {
       toast.error(readQueryError(error));
@@ -656,6 +658,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     const canonicalHref = buildWorkspaceHref({
       screen: activeScreen,
       tab: activeTab,
+      dispensingTab: navigation.dispensingTab,
       fromDate: dateRange.fromDate,
       toDate: dateRange.toDate,
       popup: activeScreen === "verify" ? navigation.popup : null,
@@ -665,7 +668,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     if (navigation.needsCleanup || currentHref !== canonicalHref) {
       router.replace(canonicalHref, { scroll: false });
     }
-  }, [activeScreen, activeTab, dateRange.fromDate, dateRange.toDate, navigation.needsCleanup, navigation.popup, pathname, router, searchParams]);
+  }, [activeScreen, activeTab, dateRange.fromDate, dateRange.toDate, navigation.dispensingTab, navigation.needsCleanup, navigation.popup, pathname, router, searchParams]);
 
   useEffect(() => {
     reconcilePopupNavigation();
@@ -684,7 +687,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           search={search}
           summary={summary}
           onDateRangeChange={updateDateRange}
-          onLogout={() => { closeSelectedItem(); onLogout(); }}
+          onLogout={() => { if (hasDispensingChannelClaim()) { toast.error("กรุณากดปล่อยช่องจ่ายยาก่อนออกจากระบบ"); selectScreen("dispensing"); return; } closeSelectedItem(); onLogout(); }}
           onSearch={updateSearch}
         />
 
@@ -731,7 +734,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
-                        onPrimaryAction={(patient) => void runPrimaryAction(patient)}
+                        onSendMatching={(patient) => void runSendMatching(patient)}
                         onSelect={selectQueueItem}
                       />
                       <MobileQueueList
@@ -740,7 +743,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
-                        onPrimaryAction={(patient) => void runPrimaryAction(patient)}
+                        onSendMatching={(patient) => void runSendMatching(patient)}
                         onSelect={selectQueueItem}
                       />
                     </div>
@@ -772,7 +775,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
               onOpenChecking={() => selectScreen("checking")}
             />
           ) : null}
-          {activeScreen === "dispensing" ? <DispensingQueueScreen search={search} packages={packages} isLoading={realtime.loading} connected={realtime.connected} onRefresh={realtime.sync} /> : null}
+          {activeScreen === "dispensing" ? <DispensingQueueScreen search={search} connected={realtime.connected}
+            realtimeStamp={realtime.updatedAt} onRefresh={realtime.sync} tab={navigation.dispensingTab}
+            onTabChange={selectDispensingTab} fromDate={dateRange.fromDate} toDate={dateRange.toDate} /> : null}
           {activeScreen === "dashboard" ? <OperationsDashboard /> : null}
           {activeScreen === "me" ? <MedicationErrorScreen search={search} /> : null}
         </div>
@@ -880,7 +885,7 @@ function VerifyApiErrorState({ error, onRetry }: { error: unknown; onRetry: () =
         <AlertTriangle className="mx-auto h-9 w-9 text-rose-600" />
         <h2 className="mt-3 text-lg font-black text-rose-900">โหลดข้อมูล Verify prescriptions ไม่สำเร็จ</h2>
         <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">{readQueryError(error)}</p>
-        <p className="mt-1 text-xs font-bold text-rose-500">ตรวจสอบว่า Backend ทำงานที่ localhost:3001 และอนุญาต CORS จาก Frontend</p>
+        <p className="mt-1 text-xs font-bold text-rose-500">ตรวจสอบว่า Backend พอร์ต 3001 ทำงานอยู่บนเครื่อง Server และ Frontend เชื่อมต่อ proxy ได้</p>
         <Button className="mt-5 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={onRetry}>
           <RefreshCw className="h-4 w-4" />
           ลองใหม่

@@ -2,7 +2,8 @@
 
 Base URL สำหรับเครื่องพัฒนา: `http://localhost:3001/api/v1`
 
-API ชุดแรกเป็นแบบอ่านข้อมูลอย่างเดียว และรักษาชื่อ Field จากฐานข้อมูลไว้เป็นตัวพิมพ์ใหญ่
+Verify prescription API เป็นแบบอ่านข้อมูลอย่างเดียว; Package Workflow และ Dispensing
+มี API บันทึกสถานะเพิ่มเติม โดยรักษาชื่อ Field จากฐานข้อมูลไว้เป็นตัวพิมพ์ใหญ่
 
 ## Verify prescription list
 
@@ -239,6 +240,39 @@ TBLPATIENT.PATIENTID = VitalSign.PATIENTID
 
 ## Package workflow
 
+### Hospital queue callback: พร้อมรับยา
+
+โรงพยาบาล POST มาที่ Backend หลังคิวพร้อมรับยา โดย Backend เก็บ `04` ใน SQL Server
+และจับคู่ด้วย `visit_date + vn` ไม่ใช้ VN อย่างเดียว ถ้า Checking ยังไม่ส่งมา
+สถานะจะรออยู่; เมื่อครบทั้งสองเงื่อนไขจึงบันทึก `QUEUE_READY_AT` และเปิดสิทธิ์เรียกผู้ป่วย
+การส่ง `04` ซ้ำจะไม่เปลี่ยนเวลาเริ่มพร้อมหรือสร้าง package ใหม่
+
+```http
+POST /api/hospital/queue/step-id
+Content-Type: application/json
+
+{
+  "vn": "0883",
+  "visit_date": "2026-09-20",
+  "step_id": "04"
+}
+```
+
+Payload ใช้สาม field ตามข้อตกลงกับโรงพยาบาล: `vn`, `visit_date`, `step_id`.
+ตอบใน envelope เดิม
+`{ "success": true, "message": "...", "data": { "vn": "...", "visit_date": "...", "step_id": "04" } }`
+กับ HTTP 200; รับเฉพาะ `step_id="04"`. `GET /api/hospital/queue/step-id/recent`
+ใช้ดู 50 callback ล่าสุดจากเครื่อง Backend (`localhost`) เท่านั้น และอ่านจากฐานจริง
+แทนการเก็บในหน่วยความจำ; เครื่องอื่นได้ 403
+
+POST เปิดด้วย `HOSPITAL_QUEUE_CALLBACK_ENABLED=true` หลังติดตั้ง migration `009`
+และตรวจเส้นทาง VPN แล้วเท่านั้น ค่า `HOSPITAL_CALLBACK_TEST_ENABLED=true` เดิม
+ยังเปิดได้เฉพาะ `DB_PROFILE=local` ที่ไม่ใช่ production เพื่อทดสอบ Local
+ทั้งสอง route ต้องมี `PACKAGE_WORKFLOW_ENABLED=true`; มิฉะนั้นตอบ 503
+POST ยังไม่มี token/IP allowlist ตามขอบเขตรอบนี้ จึงต้องจำกัดการเข้าถึงด้วย VPN/firewall
+และห้ามเผยแพร่ endpoint สู่อินเทอร์เน็ต เส้นทางนี้อยู่นอก prefix `/api/v1`
+
+
 API กลุ่มนี้จัดการสถานะตั้งแต่ Verify ถึง Dispensing โดยไม่แก้ข้อมูลใน
 `TBLORX`, `TBLORXITEMS` หรือ `TBLORXITEMS_HISTORY`
 
@@ -412,12 +446,68 @@ POST /packages/{packageId}/checking/validate-pair
 { "medicineCode": "1200000096", "labelQrToken": "QR-..." }
 
 POST /packages/{packageId}/dispensing/status
-{ "status": "CALLED_WAITING" }
-{ "status": "RECEIVED" }
+{ "status": "CALLED_WAITING", "claimToken": "UUID", "expectedRowVersion": "base64", "actionId": "UUID" }
+{ "status": "MISSED_CALL", "claimToken": "UUID", "expectedRowVersion": "base64", "actionId": "UUID" }
+{ "status": "RECEIVED", "claimToken": "UUID", "expectedRowVersion": "base64", "actionId": "UUID" }
 ```
 
 ทั้ง scan ที่ `MATCHED` และ `MISMATCHED` ถูกบันทึกใน `TBLPACKAGEEVENTS`
 แต่เฉพาะค่าที่ตรงเท่านั้นที่เปลี่ยนสถานะรายการยา
+
+### Dispensing: ช่อง คิว และประวัติ
+
+ต้องติดตั้ง migration `009_dispensing_queue.sql` หลัง `005` และรัน validation `003`, `006`
+ก่อนเปิด UI รุ่นนี้ คิวเปิดอ่านข้ามวัน visit ได้ ไม่ผูกกับช่วงวันที่ของหน้า Verify
+
+```http
+GET /dispensing/queue
+GET /dispensing/queue/changes?cursor={CURSOR}
+GET /dispensing/channels
+POST /dispensing/channels/{1..8}/claim
+{ "claimToken": "UUID" }
+POST /dispensing/channels/{1..8}/claim/validate
+{ "claimToken": "UUID" }
+DELETE /dispensing/channels/{1..8}/claim
+{ "claimToken": "UUID" }
+POST /dispensing/channels/{1..8}/claim/release-on-close
+claimToken=UUID
+POST /dispensing/channels/{1..8}/force-release
+{ "username": "ผู้ดูแล", "password": "รหัสผ่าน", "reason": "เหตุผลที่ตรวจสอบได้" }
+POST /dispensing/packages/{packageId}/transfer/{1..8}
+{ "claimToken": "UUID", "expectedRowVersion": "base64", "actionId": "UUID" }
+GET /dispensing/history?fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD&page=1
+```
+
+`GET /dispensing/queue` ตอบ `{CURSOR, UPSERTS, CHANNELS}`; delta ตอบ
+`{CURSOR, UPSERTS, REMOVED_IDS, CHANNELS}`. `UPSERTS` เป็น package summary
+ที่มี `PACKAGE_ID`, `WORKFLOW_ID`, `VISITDATETIME`, `VISITNUMBER`, ชื่อผู้ป่วย,
+`DISPENSING_CHANNEL`, `QUEUE_READY_AT`, `DISPENSING_PICKUP_STATUS`,
+`CALL_COUNT`, `ROW_VERSION`, `ITEM_COUNT` และ NOTE แต่ไม่มีรายการยาทั้งหมด
+Frontend โหลดรายละเอียดจาก `GET /packages/{packageId}` เฉพาะเมื่อเลือกแถว
+ถ้า cursor หมดอายุจะตอบ 409 ให้โหลด queue ใหม่
+
+การจองช่องมีผู้ถือได้หนึ่ง session/ช่อง; token ส่งเฉพาะผล client กับคำสั่ง ไม่อยู่ใน
+queue/SSE Frontend ใช้ `claim/validate` ตรวจสิทธิ์เมื่อมี realtime update และตรวจซ้ำเป็นระยะ
+เมื่อผู้ดูแลปลดช่อง แท็บเดิมจะล้าง claim และกลับหน้าเลือกช่อง เมื่อปิดแท็บ ปิดเว็บไซต์
+หรือรีเฟรชเอกสารทั้งหน้า Frontend จะส่ง `release-on-close` แบบ best-effort และล้าง claim ในแท็บ
+การรีเฟรชเต็มหน้าจึงต้องเลือกช่องใหม่ หากเครื่องดับหรือเครือข่ายขาดก่อนส่งคำสั่งให้ใช้การปลดช่องโดยผู้ดูแล
+ช่องไม่มีเวลาหมดอายุและต้องปล่อยเอง
+ช่องที่ค้างปลดผ่านหน้าเลือกช่องได้ด้วย credential ที่ Backend อ่านจาก
+`DISPENSING_ADMIN_USERNAME`/`DISPENSING_ADMIN_PASSWORD`; Frontend ไม่เก็บรหัส
+และ Backend บันทึกชื่อผู้ปลดกับเหตุผลใน `RELEASE_REASON`
+คำสั่งเปลี่ยนคิวตรวจ claim, `ROW_VERSION` และสถานะภายใน transaction; `actionId`
+เป็น idempotency key ของคำสั่งหนึ่งครั้ง ถ้าชนการแก้จากเครื่องอื่นตอบ 409
+งานใหม่จาก Checking เข้าช่อง 1 เสมอ; การย้ายไม่เปลี่ยน `QUEUE_READY_AT`
+เรียกซ้ำเพิ่ม `CALL_COUNT`; Missed-call ทำได้หลังเรียก; รับยาแล้วปิดงานในระบบนี้
+ประวัติอ่านอย่างเดียวและกรองตาม `RECEIVED_AT` หน้าละ 50
+หนึ่งช่องมี package สถานะ `CALLED_WAITING` ได้เพียงหนึ่งรายการ Backend ใช้
+transaction application lock ป้องกันสองเครื่องเรียกคนละ VN พร้อมกัน ถ้าช่องกำลังเรียก
+ผู้ป่วยอยู่ ต้องกด `RECEIVED` หรือ `MISSED_CALL` ก่อนเรียก VN อื่น; VN เดิมเรียกซ้ำได้
+
+รอบนี้ **ไม่เรียกออก** Finance/Insurance Update, Queue Call หรือ Queue Success
+ของโรงพยาบาล การเรียกและปิดเคสจึงเป็นผลเฉพาะระบบนี้; หลังปิดไม่แสดงคำเตือนใน UI
+แม้คิวฝั่งโรงพยาบาลอาจยังเป็น `04`. วิธีติดตั้งและปลดช่องค้าง:
+[DISPENSING-QUEUE.md](./DISPENSING-QUEUE.md)
 
 ## Realtime snapshot / delta / SSE
 

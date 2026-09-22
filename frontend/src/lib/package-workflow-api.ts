@@ -5,7 +5,7 @@ import type { VerifyClinicalAlertApi } from "@/lib/verify-prescriptions-api";
 export type PackagePage = "PICKING" | "MATCHING" | "CHECKING" | "AWAITING_DISPENSING" | "DISPENSING" | "COMPLETE";
 export type VerifyMode = "NORMAL" | "URGENT";
 export type PackageTransitionAction = "SEND_TO_MATCHING" | "SEND_TO_CHECKING" | "SEND_TO_DISPENSING";
-export type DispensingPickupStatus = "WAITING_CALL" | "CALLED_WAITING" | "RECEIVED";
+export type DispensingPickupStatus = "WAITING_CALL" | "CALLED_WAITING" | "MISSED_CALL" | "RECEIVED";
 
 export type PackageWorkflowItemState = {
   PRESCRIPTIONNUMBER: string;
@@ -202,8 +202,13 @@ export function validatePackageCheckingPair(packageId: string, medicineCode: str
   );
 }
 
-export function updatePackageDispensingStatus(packageId: string, status: Exclude<DispensingPickupStatus, "WAITING_CALL">) {
-  return apiPost<MedicationPackage>(`/packages/${packageId}/dispensing/status`, { status });
+export function updatePackageDispensingStatus(packageId: string, input: {
+  status: Exclude<DispensingPickupStatus, "WAITING_CALL">;
+  claimToken: string;
+  expectedRowVersion: string;
+  actionId: string;
+}) {
+  return apiPost<MedicationPackage>(`/packages/${packageId}/dispensing/status`, input);
 }
 
 export function packageWorkflowKey(workflow: Pick<PackageWorkflow, "VISITDATETIME" | "VISITNUMBER">) {

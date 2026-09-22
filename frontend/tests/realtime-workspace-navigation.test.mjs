@@ -80,3 +80,15 @@ test("uses Back only for popups opened from the current web history", () => {
   assert.equal(popupCloseMode(true), "back");
   assert.equal(popupCloseMode(false), "replace");
 });
+
+test("round-trips the three Dispensing tabs and removes invalid tab values", () => {
+  for (const dispensingTab of ["station", "assist", "history"]) {
+    const href = buildWorkspaceHref({ screen: "dispensing", dispensingTab, fromDate: date, toDate: date });
+    assert.equal(href, `/dispensing?tab=${dispensingTab}&from=${date}&to=${date}`);
+    const parsed = parseWorkspaceNavigation(href.split("?")[1], date);
+    assert.equal(parsed.dispensingTab, dispensingTab);
+  }
+  const invalid = parseWorkspaceNavigation(`tab=outside&from=${date}&to=${date}`, date);
+  assert.equal(invalid.dispensingTab, "station");
+  assert.equal(invalid.needsCleanup, true);
+});

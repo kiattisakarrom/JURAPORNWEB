@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
@@ -13,7 +13,12 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [
+      { path: 'api/hospital/queue/step-id', method: RequestMethod.POST },
+      { path: 'api/hospital/queue/step-id/recent', method: RequestMethod.GET },
+    ],
+  });
   app.enableCors({ origin: corsOrigins });
   app.enableShutdownHooks();
   app.useGlobalPipes(

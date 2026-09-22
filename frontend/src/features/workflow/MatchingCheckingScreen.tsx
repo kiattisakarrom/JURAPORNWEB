@@ -52,6 +52,31 @@ function currentBangkokTime() {
   }).format(new Date());
 }
 
+function NoteButton({ hasNote, onClick }: { hasNote: boolean; onClick: () => void }) {
+  return (
+    <Button
+      aria-label={hasNote ? "เปิดบันทึก / NOTE (มีข้อความ NOTE)" : "เปิดบันทึก / NOTE"}
+      className="relative h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50"
+      onClick={onClick}
+      size="sm"
+      variant="outline"
+    >
+      <NotebookPen className="h-4 w-4" />
+      บันทึก / NOTE
+      {hasNote ? (
+        <span
+          aria-label="มีข้อความ NOTE"
+          className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[11px] font-black leading-none text-white shadow-sm ring-2 ring-white"
+          role="img"
+          title="มีข้อความ NOTE"
+        >
+          !
+        </span>
+      ) : null}
+    </Button>
+  );
+}
+
 export function MatchingCheckingScreen({
   search,
   stage,
@@ -102,6 +127,7 @@ export function MatchingCheckingScreen({
 
   const selected = filtered.find((basket) => basket.id === selectedId);
   const selectedPackage = itemPackages.find((itemPackage) => itemPackage.PACKAGE_ID === selectedId);
+  const hasSelectedNote = Boolean(selectedPackage?.VERIFY_NOTE?.trim());
   const selectedProgress = selected ? progressOf(selected) : undefined;
   const selectedMedicationErrorItem = selected?.items.find((item) => item.id === selectedMedicationErrorItemId);
 
@@ -393,10 +419,7 @@ export function MatchingCheckingScreen({
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                   <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
-                    <Button className="h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setIsNoteOpen(true)} size="sm" variant="outline">
-                      <NotebookPen className="h-4 w-4" />
-                      บันทึก / NOTE
-                    </Button>
+                    <NoteButton hasNote={hasSelectedNote} onClick={() => setIsNoteOpen(true)} />
                   </div>
                   <div className="flex min-w-[220px] items-center gap-4">
                     <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
@@ -562,6 +585,7 @@ export function MatchingCheckingScreen({
           guideCode={guideCode}
           guideError={guideError}
           isLoading={isLoading}
+          hasNote={hasSelectedNote}
           onConfirmMedicine={confirmCheckingMedicine}
           onFindGuide={findGuide}
           onOpenMedicationError={() => setIsMedicationErrorOpen(true)}
@@ -616,6 +640,7 @@ function CheckingWorkspace({
   baskets,
   selected,
   isLoading,
+  hasNote,
   guideCode,
   guideError,
   stickerCode,
@@ -639,6 +664,7 @@ function CheckingWorkspace({
   baskets: WorkflowBasketItem[];
   selected?: WorkflowBasketItem;
   isLoading: boolean;
+  hasNote: boolean;
   guideCode: string;
   guideError: string | null;
   stickerCode: string;
@@ -758,10 +784,7 @@ function CheckingWorkspace({
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
-                <Button className="h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={onOpenNote} size="sm" variant="outline">
-                  <NotebookPen className="h-4 w-4" />
-                  บันทึก / NOTE
-                </Button>
+                <NoteButton hasNote={hasNote} onClick={onOpenNote} />
               </div>
               <div className="flex min-w-[220px] items-center gap-4">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
