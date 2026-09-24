@@ -87,6 +87,7 @@ export function DispensingQueueScreen({
   const [channels, setChannels] = useState<DispensingChannel[]>([]);
   const [items, setItems] = useState<DispensingQueueItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [assistChannel, setAssistChannel] = useState<number | null>(null);
   const [detail, setDetail] = useState<MedicationPackage | null>(null);
   const [history, setHistory] = useState<DispensingQueueItem[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
@@ -359,7 +360,10 @@ export function DispensingQueueScreen({
     && Boolean(item.QUEUE_READY_AT)
     && item.DISPENSING_PICKUP_STATUS === "CALLED_WAITING") ?? null;
   const selected = [...items, ...history].find(item => item.PACKAGE_ID === selectedId) ?? null;
-  const others = items.filter(item => item.DISPENSING_CHANNEL !== claim?.channel && matches(item)).sort(readyOrder);
+  const selectedAssistChannel = assistChannel === claim?.channel ? null : assistChannel;
+  const assistItems = selectedAssistChannel === null ? [] : items
+    .filter(item => item.DISPENSING_CHANNEL === selectedAssistChannel && matches(item))
+    .sort(readyOrder);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#f7f9fc]">
@@ -422,21 +426,33 @@ export function DispensingQueueScreen({
             </div>
           ) : tab === "assist" ? (
             <section className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-              <div className="grid gap-3 sm:grid-cols-4 xl:grid-cols-8">
+              <h2 className="text-lg font-black text-slate-900">งานในช่องอื่น</h2>
+              <p className="mt-1 text-sm text-slate-500">เลือกช่องที่ต้องการช่วยก่อน แล้วระบบจะแสดงเฉพาะคิวของช่องนั้น</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-4 xl:grid-cols-8">
                 {Array.from({ length: 8 }, (_, index) => index + 1).map(channel => {
                   const occupied = channels.find(item => item.CHANNEL_NO === channel)?.OCCUPIED;
-                  return <div key={channel} className={cn("rounded-2xl border border-slate-200 bg-white p-4", channel === claim.channel && "border-blue-300 bg-blue-50")}>
-                    <div className="text-sm font-bold text-slate-500">ช่อง {channel}</div>
-                    <div className="mt-1 font-mono text-2xl font-black text-slate-900">{items.filter(item => item.DISPENSING_CHANNEL === channel).length}</div>
-                    <div className="text-xs text-slate-500">{occupied ? "มีผู้ใช้งาน" : "ยังไม่มีผู้ถือช่อง"}</div>
+                  const queueCount = items.filter(item => item.DISPENSING_CHANNEL === channel).length;
+                  const isOwn = channel === claim.channel;
+                  const isSelected = channel === selectedAssistChannel;
+                  return <div key={channel} className={cn("rounded-2xl border bg-white p-2 transition", isSelected ? "border-blue-500 bg-blue-50 shadow-sm" : "border-slate-200", isOwn && "bg-slate-100")}>
+                    <button type="button" disabled={isOwn} aria-pressed={isSelected}
+                      onClick={() => setAssistChannel(channel)}
+                      className="w-full rounded-xl p-2 text-left transition hover:bg-blue-50 disabled:cursor-default disabled:hover:bg-transparent">
+                      <div className={cn("text-sm font-bold", isSelected ? "text-blue-700" : "text-slate-500")}>ช่อง {channel}</div>
+                      <div className="mt-1 flex items-baseline gap-1"><span className="font-mono text-2xl font-black text-slate-900">{queueCount}</span><span className="text-xs font-bold text-slate-500">คิวรอ</span></div>
+                      <div className="text-xs text-slate-500">{isOwn ? "ช่องของฉัน" : occupied ? "มีผู้ใช้งาน" : "ยังไม่มีผู้ถือช่อง"}</div>
+                    </button>
                     {occupied && channel !== claim.channel ? <button type="button" disabled={busy || !connected} onClick={() => setReleaseTarget(channel)}
-                      className="mt-3 text-xs font-bold text-red-600 hover:underline disabled:opacity-50">ปลดช่อง</button> : null}
+                      className="mt-1 w-full pb-1 text-xs font-bold text-red-600 hover:underline disabled:opacity-50">ปลดช่อง</button> : null}
                   </div>;
                 })}
               </div>
-              <h2 className="mt-6 text-lg font-black text-slate-900">งานในช่องอื่น</h2>
+              {selectedAssistChannel !== null ? <div className="mt-6 flex items-center gap-2">
+                <h3 className="text-lg font-black text-slate-900">งานช่อง {selectedAssistChannel}</h3>
+                <Badge className="bg-blue-50 text-blue-700">{assistItems.length} คิว</Badge>
+              </div> : null}
               <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                {others.map(item => <div key={item.PACKAGE_ID} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+                {assistItems.map(item => <div key={item.PACKAGE_ID} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4">
                   <div><div className="font-mono text-lg font-black">VN {item.VISITNUMBER}</div>
                     <div className="text-sm font-semibold text-slate-700">{item.PATIENT_NAME || "ไม่พบชื่อผู้ป่วย"}</div>
                     <div className="mt-1 text-xs text-slate-500">ช่อง {item.DISPENSING_CHANNEL} · {formatTime(item.QUEUE_READY_AT)}</div></div>
@@ -445,7 +461,8 @@ export function DispensingQueueScreen({
                       onClick={() => void pullToMyChannel(item)}><ArrowRightLeft className="h-4 w-4" />ดึงมาช่อง {claim.channel}</Button></div>
                 </div>)}
               </div>
-              {!others.length ? <p className="mt-5 text-sm text-slate-500">ไม่มีงานในช่องอื่น</p> : null}
+              {selectedAssistChannel === null ? <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-500">กรุณาเลือกช่องที่ต้องการช่วยจากด้านบน</p> : null}
+              {selectedAssistChannel !== null && !assistItems.length ? <p className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-500">ไม่มีคิวรอในช่อง {selectedAssistChannel}</p> : null}
             </section>
           ) : (
             <section className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
