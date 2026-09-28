@@ -14,6 +14,7 @@ const packageId = "b7fcb90a-79d5-49d1-a1ce-3f3708f1cc91";
 test("maps supported workspace paths without accepting unknown routes", () => {
   assert.equal(workspaceScreenFromPathname("/verify"), "verify");
   assert.equal(workspaceScreenFromPathname("/me-report/"), "me");
+  assert.equal(workspaceScreenFromPathname("/drugmaster"), "drugmaster");
   assert.equal(workspaceScreenFromPathname("/unknown"), null);
 });
 
@@ -91,4 +92,13 @@ test("round-trips the three Dispensing tabs and removes invalid tab values", () 
   const invalid = parseWorkspaceNavigation(`tab=outside&from=${date}&to=${date}`, date);
   assert.equal(invalid.dispensingTab, "station");
   assert.equal(invalid.needsCleanup, true);
+});
+
+test("round-trips the three Drug Master tabs", () => {
+  for (const drugMasterTab of ["allergy", "interaction", "label"]) {
+    const href = buildWorkspaceHref({ screen: "drugmaster", drugMasterTab, fromDate: date, toDate: date });
+    assert.equal(href, `/drugmaster?tab=${drugMasterTab}&from=${date}&to=${date}`);
+    const parsed = parseWorkspaceNavigation(href.split("?")[1], date);
+    assert.equal(parsed.drugMasterTab, drugMasterTab);
+  }
 });

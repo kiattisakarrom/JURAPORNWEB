@@ -612,6 +612,41 @@ Client เรียก changes ด้วย cursor ของตนเองห�
 
 คู่มือติดตั้ง การทำงาน และข้อจำกัด: [REALTIME-SYNC.md](./REALTIME-SYNC.md)
 
+## Drug label template และ Browser Print
+
+ต้องติดตั้ง `backend/sql/010_drug_label_templates.sql` ก่อนใช้ API กลุ่มนี้ เทมเพลตเป็น
+structured JSON เท่านั้น ไม่รับ HTML/JavaScript และมี Draft/Active อย่างละหนึ่งรายการ
+
+```http
+GET /drug-label-templates/current
+PUT /drug-label-templates/draft
+PUT /drug-label-templates/draft/logo
+POST /drug-label-templates/draft/publish
+POST /packages/{PACKAGE_ID}/items/{PACKAGE_ITEM_ID}/label/print
+```
+
+- `GET current` คืน `{ DRAFT, ACTIVE }` พร้อม `ROW_VERSION` แบบ base64
+- `PUT draft` รับ `expectedRowVersion`, `widthMm`, `heightMm`, `definition`, `actorName?`
+- `PUT draft/logo` รับ `expectedRowVersion`, `mimeType` (`image/png` หรือ `image/jpeg`),
+  `dataBase64`, `actorName?`; จำกัดไฟล์ 1 MB
+- `POST publish` รับ `expectedRowVersion`, `actorName?` แล้ว archive Active เดิมและสร้าง
+  Active version ใหม่ใน transaction
+- `POST label/print` ใช้ได้หลังรายการยาผ่าน Matching scan แล้ว คืนเทมเพลตและข้อมูลจริง
+  สำหรับพิมพ์ เพิ่ม `PRINT_COUNT` และจำ `LABEL_TEMPLATE_ID` ครั้งแรก การพิมพ์ซ้ำจึงใช้
+  template version เดิมเสมอ
+- การบันทึก/Publish ด้วย row version เก่าตอบ `409`; element นอกพื้นที่หรือ field ที่ไม่รองรับตอบ `422`
+- ช่องข้อมูลฉลากที่ไม่มีค่าใช้ `—`; QR ใช้ `QR_TOKEN` ที่อยู่ใน package item
+
+Matching scan รองรับ `packageItemId` เพิ่มเติมเพื่อแยกรายการที่มี `MEDICINECODE` ซ้ำกัน:
+
+```json
+{ "medicineCode": "1200000001", "packageItemId": "uuid" }
+```
+
+หลัง scan สำเร็จรายการมีสถานะ “สแกนแล้ว รอพิมพ์” และยังส่งไป Checking ไม่ได้จน
+`LABEL_STATUS` เป็น `PRINTED` หรือ `CHECKED` ดูรายละเอียดที่
+[DRUG-LABEL-DESIGNER.md](./DRUG-LABEL-DESIGNER.md)
+
 ## Errors
 
 | Status | Meaning |

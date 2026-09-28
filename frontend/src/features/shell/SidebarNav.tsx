@@ -18,7 +18,7 @@ export function SidebarNav({
       <div className="mb-[14px] hidden h-[42px] w-[42px] items-center justify-center rounded-xl bg-gradient-to-br from-[#2f6bf3] to-[#1f9be0] text-white shadow-lg shadow-blue-950/30 md:flex">
         <Activity className="h-6 w-6" />
       </div>
-      <nav className="grid flex-1 grid-cols-6 gap-1 md:flex md:w-full md:flex-col md:items-center md:gap-1">
+      <nav className="flex flex-1 items-stretch gap-1 overflow-x-auto md:w-full md:flex-col md:items-center md:gap-1 md:overflow-visible">
         {items.map((item) => {
           const Icon = item.icon;
           const active = activeScreen === item.id;
@@ -27,7 +27,7 @@ export function SidebarNav({
             <button
               aria-label={item.label}
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center gap-[5px] rounded-[14px] px-1 py-2 text-[9.5px] font-semibold tracking-[0.02em] text-[#7d92b5] transition hover:bg-[#1d3461] hover:text-white md:h-auto md:w-[60px] md:px-0 md:py-[10px]",
+                "flex min-w-[58px] flex-1 flex-col items-center justify-center gap-[5px] rounded-[14px] px-1 py-2 text-[9.5px] font-semibold tracking-[0.02em] text-[#7d92b5] transition hover:bg-[#1d3461] hover:text-white md:h-auto md:w-[60px] md:flex-none md:px-0 md:py-[10px]",
                 active && "bg-[#1d3461] text-white shadow-none",
               )}
               key={item.id}

@@ -9,6 +9,7 @@ import {
   Filter,
   Info,
   LockKeyhole,
+  Loader2,
   NotebookPen,
   PackageCheck,
   Printer,
@@ -30,6 +31,8 @@ import {
 } from "@/lib/package-workflow-api";
 import { cn } from "@/lib/utils";
 import { PackageNoteModal } from "./PackageNoteModal";
+import { printPackageDrugLabel } from "@/lib/drug-label-api";
+import { openDrugLabelPrint } from "@/lib/drug-label-print";
 
 function progressOf(basket: WorkflowBasketItem) {
   const done = basket.items.filter((item) => item.status === "done").length;
@@ -106,7 +109,7 @@ export function MatchingCheckingScreen({
   const [selectedMedicationErrorItemId, setSelectedMedicationErrorItemId] = useState<string | null>(null);
   const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
   const [isNoteOpen, setIsNoteOpen] = useState(false);
-  const [printedAt, setPrintedAt] = useState<Record<string, string>>({});
+  const [printingItemId, setPrintingItemId] = useState<string | null>(null);
   const [checkedAt, setCheckedAt] = useState<Record<string, string>>({});
   const apiStage = stage.toUpperCase() as PackagePage;
   const itemPackages = useMemo(() => packages.filter(p => p.PAGE_NOW === apiStage), [packages, apiStage]);
@@ -204,20 +207,46 @@ export function MatchingCheckingScreen({
       return;
     }
 
-    const item = selected.items.find((drug) => drug.code.toLowerCase() === code && drug.status !== "done");
+    const item = selected.items.find((drug) => drug.code.toLowerCase() === code && drug.status === "wait");
+    if (!item) {
+      setMedicineError("ไม่พบรายการยาที่ยังรอสแกนด้วยรหัสนี้");
+      return;
+    }
+    setPrintingItemId(item.id);
     try {
-      await scanPackageMatchingMedicine(selected.id, medicineCode.trim());
-      if (item) setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
+      await scanPackageMatchingMedicine(selected.id, medicineCode.trim(), item.id);
+    } catch (error) {
+      setMedicineError(readWorkflowError(error));
+      setPrintingItemId(null);
+      return;
+    }
+    try {
+      const printModel = await printPackageDrugLabel(selected.id, item.id);
+      await openDrugLabelPrint(printModel);
       setMedicineCode("");
       setMedicineError(null);
       await refreshBaskets();
     } catch (error) {
-      setMedicineError(readWorkflowError(error));
+      setMedicineError(`สแกนยาแล้ว แต่พิมพ์ฉลากไม่สำเร็จ: ${readWorkflowError(error)} กรุณากดพิมพ์สติกเกอร์อีกครั้ง`);
+      await refreshBaskets().catch(() => undefined);
+    } finally {
+      setPrintingItemId(null);
     }
   }
 
-  function reprintItem(item: WorkflowBasketItem["items"][number]) {
-    setPrintedAt((current) => ({ ...current, [item.id]: currentBangkokTime() }));
+  async function reprintItem(item: WorkflowBasketItem["items"][number]) {
+    if (!selected) return;
+    setPrintingItemId(item.id);
+    try {
+      const printModel = await printPackageDrugLabel(selected.id, item.id);
+      await openDrugLabelPrint(printModel);
+      setMedicineError(null);
+      await refreshBaskets();
+    } catch (error) {
+      setMedicineError(readWorkflowError(error));
+    } finally {
+      setPrintingItemId(null);
+    }
   }
 
   function confirmCheckingMedicine() {
@@ -462,6 +491,7 @@ export function MatchingCheckingScreen({
                 <div className="mt-5 space-y-3">
                   {selected.items.map((item, index) => {
                     const isDone = item.status === "done";
+                    const isWaitingPrint = item.status === "doing";
                     const isSelectedForMedicationError = selectedMedicationErrorItemId === item.id;
                     return (
                       <div
@@ -471,7 +501,7 @@ export function MatchingCheckingScreen({
                           "grid cursor-pointer gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:grid-cols-[48px_minmax(220px,1fr)_130px_190px_minmax(126px,auto)] md:items-center md:px-5",
                           isSelectedForMedicationError
                             ? "border-blue-400 bg-blue-50 shadow-sm shadow-blue-100 ring-1 ring-blue-200"
-                            : isDone ? "border-emerald-200 bg-emerald-50/50 hover:border-blue-300" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40",
+                            : isDone ? "border-emerald-200 bg-emerald-50/50 hover:border-blue-300" : isWaitingPrint ? "border-blue-200 bg-blue-50/50 hover:border-blue-400" : "border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40",
                         )}
                         key={item.id}
                         onClick={() => setSelectedMedicationErrorItemId(item.id)}
@@ -487,7 +517,7 @@ export function MatchingCheckingScreen({
                       >
                         <div className={cn(
                           "flex h-10 w-10 items-center justify-center rounded-full text-base font-black",
-                          isDone ? "bg-emerald-500 text-white" : "border border-amber-200 bg-amber-50 text-amber-700",
+                          isDone ? "bg-emerald-500 text-white" : isWaitingPrint ? "border border-blue-200 bg-blue-50 text-blue-700" : "border border-amber-200 bg-amber-50 text-amber-700",
                         )}>
                           {isDone ? <CheckCircle2 className="h-6 w-6" /> : index + 1}
                         </div>
@@ -506,31 +536,34 @@ export function MatchingCheckingScreen({
                         </div>
                         <div className={cn(
                           "text-sm font-black md:mr-6 md:justify-self-end md:text-right",
-                          !isDone && "md:col-span-2",
-                          isDone ? "text-emerald-600" : "text-amber-700",
+                          item.status === "wait" && "md:col-span-2",
+                          isDone ? "text-emerald-600" : isWaitingPrint ? "text-blue-700" : "text-amber-700",
                         )}>
                           {isDone ? (
                             <>
                               <span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />พิมพ์สติกเกอร์แล้ว</span>
-                              <span className="mt-1 block font-mono font-bold text-slate-400">{printedAt[item.id] ?? item.printedAt ?? "พิมพ์แล้ว"}</span>
+                              <span className="mt-1 block font-mono font-bold text-slate-400">{item.printedAt ?? "พิมพ์แล้ว"}</span>
                             </>
+                          ) : isWaitingPrint ? (
+                            <span className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2"><Printer className="h-4 w-4" />สแกนแล้ว รอพิมพ์</span>
                           ) : (
                             <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอสแกนยา</span>
                           )}
                         </div>
-                        {isDone ? (
+                        {isDone || isWaitingPrint ? (
                           <div>
                             <Button
                               className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                              disabled={printingItemId === item.id}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                reprintItem(item);
+                                void reprintItem(item);
                               }}
                               size="sm"
                               variant="outline"
                             >
-                              <Printer className="h-4 w-4" />
-                              พิมพ์ซ้ำ
+                              {printingItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
+                              {isDone ? "พิมพ์ซ้ำ" : "พิมพ์สติกเกอร์"}
                             </Button>
                           </div>
                         ) : null}

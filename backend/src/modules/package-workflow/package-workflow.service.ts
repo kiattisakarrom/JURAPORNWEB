@@ -944,6 +944,16 @@ export class PackageWorkflowService {
           packageId,
           'MATCHING_STATUS',
         );
+        const labelRequest = createRequest();
+        labelRequest.input('packageId', sql.UniqueIdentifier, packageId);
+        const labelResult = await labelRequest.query<{ WAITING_LABELS: number }>(`
+          SELECT COUNT(*) AS WAITING_LABELS FROM dbo.TBLPACKAGEITEMS
+          WHERE PACKAGE_ID=@packageId AND MATCHING_STATUS<>'CANCELLED'
+            AND LABEL_STATUS NOT IN ('PRINTED','CHECKED');
+        `);
+        if (Number(labelResult.recordset[0]?.WAITING_LABELS ?? 0) > 0) {
+          throw new ConflictException('Print every medicine label before sending to Checking');
+        }
         const request = createRequest();
         request.input('packageId', sql.UniqueIdentifier, packageId);
         request.input('actorName', sql.NVarChar(150), actorName);
@@ -1038,11 +1048,13 @@ export class PackageWorkflowService {
         }
         const itemRequest = createRequest();
         itemRequest.input('packageId', sql.UniqueIdentifier, packageId);
+        itemRequest.input('packageItemId', sql.UniqueIdentifier, body.packageItemId ?? null);
         itemRequest.input('medicineCode', sql.VarChar(30), body.medicineCode);
         const result = await itemRequest.query<PackageItemIdentityRow>(`
           SELECT TOP (1) PACKAGE_ITEM_ID, MEDICINECODE, QR_TOKEN
           FROM dbo.TBLPACKAGEITEMS WITH (UPDLOCK, HOLDLOCK)
           WHERE PACKAGE_ID = @packageId AND MEDICINECODE = @medicineCode
+            AND (@packageItemId IS NULL OR PACKAGE_ITEM_ID=@packageItemId)
             AND MATCHING_STATUS = 'WAITING'
           ORDER BY ITEMSEQ;
         `);
@@ -1067,9 +1079,7 @@ export class PackageWorkflowService {
         await updateRequest.query(`
           UPDATE dbo.TBLPACKAGEITEMS
           SET MATCHING_STATUS = 'COMPLETED', MATCHED_BY = @actorName,
-              MATCHED_AT = SYSUTCDATETIME(), LABEL_STATUS = 'PRINTED',
-              PRINT_COUNT = PRINT_COUNT + 1, PRINTED_AT = SYSUTCDATETIME(),
-              UPDATED_AT = SYSUTCDATETIME()
+              MATCHED_AT = SYSUTCDATETIME(), UPDATED_AT = SYSUTCDATETIME()
           WHERE PACKAGE_ITEM_ID = @itemId;
         `);
         await this.insertEvent(createRequest, {
@@ -1081,15 +1091,6 @@ export class PackageWorkflowService {
           scannedValue: body.medicineCode,
           expectedValue: item.MEDICINECODE,
           result: 'MATCHED',
-          actorName: body.actorName,
-          workstationCode: body.workstationCode,
-        });
-        await this.insertEvent(createRequest, {
-          workflowId: packageRow.WORKFLOW_ID,
-          packageId,
-          packageItemId: item.PACKAGE_ITEM_ID,
-          eventType: 'LABEL_PRINT',
-          result: 'SUCCESS',
           actorName: body.actorName,
           workstationCode: body.workstationCode,
         });
@@ -2072,7 +2073,8 @@ export class PackageWorkflowService {
       const actions = ['SCAN_MEDICINE'];
       if (
         packageResponse.ITEMS.length > 0 &&
-        packageResponse.ITEMS.every((item) => item.MATCHING_STATUS === 'COMPLETED')
+        packageResponse.ITEMS.every((item) => item.MATCHING_STATUS === 'COMPLETED'
+          && ['PRINTED', 'CHECKED'].includes(item.LABEL.LABEL_STATUS))
       ) actions.push('SEND_TO_CHECKING');
       return actions;
     }

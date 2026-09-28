@@ -8,6 +8,7 @@ import { VerifyModule } from './modules/verify/verify.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { HospitalCallbackTestModule } from './modules/hospital-callback-test/hospital-callback-test.module';
 import { DispensingModule } from './modules/dispensing/dispensing.module';
+import { DrugMasterModule } from './modules/drug-master/drug-master.module';
 
 const databaseProfile = process.env.DB_PROFILE ?? 'local';
 
@@ -25,6 +26,7 @@ const databaseProfile = process.env.DB_PROFILE ?? 'local';
     PatientModule,
     RealtimeModule,
     DispensingModule,
+    DrugMasterModule,
     HospitalCallbackTestModule,
   ],
 })

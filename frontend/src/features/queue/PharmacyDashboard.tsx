@@ -2,7 +2,7 @@
 
 import { useRealtimeQueue } from "@/hooks/useRealtimeQueue";
 import { mapVerifyPatientsToQueue } from "@/lib/verify-prescriptions-adapter";
-import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, ClipboardCheck, FileWarning, PackageCheck, Pill, RefreshCw, ScanBarcode } from "lucide-react";
+import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, ClipboardCheck, Database, FileWarning, PackageCheck, Pill, RefreshCw, ScanBarcode } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
 import { DispensingQueueScreen, hasDispensingChannelClaim } from "@/features/dispensing/DispensingQueueScreen";
 import { MedicationErrorScreen } from "@/features/medication-error/MedicationErrorScreen";
+import { DrugMasterScreen } from "@/features/drug-master/DrugMasterScreen";
 import { SidebarNav } from "@/features/shell/SidebarNav";
 import { WorkspaceHeader, type WorkspaceDateRange } from "@/features/shell/WorkspaceHeader";
 import type { WorkspaceNavItem, WorkspaceScreen } from "@/features/shell/shell-types";
@@ -45,6 +46,7 @@ import {
   workspaceScreenFromPathname,
   type WorkspacePopupTarget,
   type DispensingTab,
+  type DrugMasterTab,
 } from "@/lib/workspace-navigation";
 import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
@@ -56,6 +58,7 @@ const workspaceItems: WorkspaceNavItem[] = [
   { id: "dispensing", label: "จ่ายยา", subtitle: "Dispensing & Queue", icon: Pill },
   { id: "dashboard", label: "Dashboard", subtitle: "Operations Dashboard", icon: BarChart3 },
   { id: "me", label: "ME Report", subtitle: "Medication Error Report", icon: FileWarning },
+  { id: "drugmaster", label: "Drug Master", subtitle: "Drug Master & Label", icon: Database },
 ];
 
 const tabs: { id: QueueStage; label: string }[] = [
@@ -247,6 +250,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       screen,
       tab,
       dispensingTab: navigation.dispensingTab,
+      drugMasterTab: navigation.drugMasterTab,
       fromDate: range.fromDate,
       toDate: range.toDate,
       popup,
@@ -284,6 +288,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
 
   function selectDispensingTab(tab: DispensingTab) {
     router.push(buildWorkspaceHref({ screen: "dispensing", dispensingTab: tab,
+      fromDate: dateRange.fromDate, toDate: dateRange.toDate }), { scroll: false });
+  }
+
+  function selectDrugMasterTab(tab: DrugMasterTab) {
+    router.push(buildWorkspaceHref({ screen: "drugmaster", drugMasterTab: tab,
       fromDate: dateRange.fromDate, toDate: dateRange.toDate }), { scroll: false });
   }
 
@@ -659,6 +668,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       screen: activeScreen,
       tab: activeTab,
       dispensingTab: navigation.dispensingTab,
+      drugMasterTab: navigation.drugMasterTab,
       fromDate: dateRange.fromDate,
       toDate: dateRange.toDate,
       popup: activeScreen === "verify" ? navigation.popup : null,
@@ -668,7 +678,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     if (navigation.needsCleanup || currentHref !== canonicalHref) {
       router.replace(canonicalHref, { scroll: false });
     }
-  }, [activeScreen, activeTab, dateRange.fromDate, dateRange.toDate, navigation.dispensingTab, navigation.needsCleanup, navigation.popup, pathname, router, searchParams]);
+  }, [activeScreen, activeTab, dateRange.fromDate, dateRange.toDate, navigation.dispensingTab, navigation.drugMasterTab, navigation.needsCleanup, navigation.popup, pathname, router, searchParams]);
 
   useEffect(() => {
     reconcilePopupNavigation();
@@ -780,6 +790,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
             onTabChange={selectDispensingTab} fromDate={dateRange.fromDate} toDate={dateRange.toDate} /> : null}
           {activeScreen === "dashboard" ? <OperationsDashboard /> : null}
           {activeScreen === "me" ? <MedicationErrorScreen search={search} /> : null}
+          {activeScreen === "drugmaster" ? <DrugMasterScreen tab={navigation.drugMasterTab} onTabChange={selectDrugMasterTab} /> : null}
         </div>
 
         {activeScreen === "verify" && selectedPatientForPanel && selectedPrescription && selectedPanel === "checking" ? (

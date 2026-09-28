@@ -29,7 +29,7 @@ cd C:\JurapornWeb\frontend
 npm ci
 ```
 
-`db:bundle` สร้าง `backend\sql\JurapornWeb_install_fullstack.sql` จาก 001, 005, 009, 003 และ 006 โดยอัตโนมัติ ห้ามแก้ไฟล์รวมโดยตรง ให้แก้ migration ต้นฉบับแล้วสร้าง bundle ใหม่
+`db:bundle` สร้าง `backend\sql\JurapornWeb_install_fullstack.sql` จาก 001, 005, 009, 010, 003 และ 006 โดยอัตโนมัติ ห้ามแก้ไฟล์รวมโดยตรง ให้แก้ migration ต้นฉบับแล้วสร้าง bundle ใหม่
 
 บนเครื่องพัฒนา Local ที่ SQL account มีสิทธิ์สร้างฐานชั่วคราว สามารถทดสอบ first install และรันซ้ำกับฐานโครงสร้างเปล่าที่สร้าง/ลบอัตโนมัติได้ด้วย `npm run db:install:test:local` สคริปต์ปฏิเสธ DB host ที่ไม่ใช่ localhost
 
@@ -235,6 +235,27 @@ C:\JurapornWeb\deploy\windows\start-frontend.cmd
 - [ ] Frontend lint/test/build ผ่านหลังตั้ง LAN API URL
 - [ ] เครื่องลูกข่ายเปิดหน้าเว็บและ REST/SSE ผ่าน
 - [ ] Verify → Picking → Matching → Checking → Dispensing, Pending และ NOTE autosave ผ่าน
+- [ ] เปิด Drug Master, บันทึก Draft, Publish และพิมพ์ฉลากทดสอบเป็น PDF ขนาด 4×3 นิ้วผ่าน
+
+## ตั้งค่าเครื่องพิมพ์ฉลาก 4 × 3 นิ้ว
+
+1. ติดตั้ง driver เครื่องพิมพ์บน Windows Server/เครื่องลูกข่ายที่กดพิมพ์
+2. เพิ่ม paper size กว้าง 4 นิ้ว สูง 3 นิ้ว แบบ Landscape และตั้ง margin เป็น 0 ถ้า driver รองรับ
+3. ใน Browser Print เลือก Scale 100%, Margins None และปิด Headers and footers
+4. ทดสอบด้วย Save as PDF ก่อน แล้วตรวจขนาดหน้าจริงเป็น 4 × 3 นิ้ว
+5. Browser ไม่รายงานกลับว่าเครื่องพิมพ์พิมพ์สำเร็จหรือผู้ใช้ยกเลิก ดังนั้นสถานะ `PRINTED`
+   ในรุ่นนี้หมายถึงระบบเปิดคำสั่งพิมพ์แล้วเท่านั้น
+
+ฐานที่ติดตั้งระบบเดิมถึง migration 009 ให้รันเฉพาะ migration ใหม่ด้วยบัญชี Installer:
+
+```bat
+cd C:\JurapornWeb\backend
+npm run db:drug-labels:live
+```
+
+Migration 010 รวมการแยกตราสัญลักษณ์ ชื่อโรงพยาบาล และเบอร์โทรเป็นคนละ element แล้ว
+และสามารถรันซ้ำเพื่ออัปเกรดฐานที่เคยใช้ 010 รุ่นเดิมได้ คำสั่งนี้ต้องสั่งโดยผู้ดูแล
+หลังสำรองฐานและตรวจ `DB_PROFILE=live`; ระบบไม่รันกับ Live อัตโนมัติ
 - [ ] ทดสอบ lock/realtime จากอย่างน้อยสอง Browser
 - [ ] Firewall เปิด 3000/3001 เฉพาะ Private และไม่เปิด 1433
 - [ ] Restart Windows แล้ว Backend/Frontend กลับมาทำงาน และ Backend มีหนึ่ง instance

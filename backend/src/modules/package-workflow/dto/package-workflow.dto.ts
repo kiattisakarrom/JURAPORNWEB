@@ -192,6 +192,10 @@ export class PackageTransitionDto extends ActorDto {
 }
 
 export class MatchingPackageScanDto extends ActorDto {
+  @IsOptional()
+  @IsUUID()
+  packageItemId?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(30)

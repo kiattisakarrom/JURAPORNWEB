@@ -80,7 +80,9 @@ Verify/Pending → Picking → Matching → Checking → Dispensing
                                                    └─ RECEIVED → Complete/ปลดล็อกยาที่เหลือ
 ```
 
-- Matching สแกน `MEDICINECODE`; เมื่อตรงจึงเปลี่ยนรายการเป็น completed และบันทึกการพิมพ์ฉลาก
+- Matching สแกน `MEDICINECODE` โดยส่ง `PACKAGE_ITEM_ID` เพื่อรองรับยารหัสซ้ำ จากนั้นรายการอยู่สถานะ
+  “สแกนแล้ว รอพิมพ์”; Frontend ขอ print model และเปิด Browser Print จึงบันทึกสถานะฉลากเป็น `PRINTED`
+- ส่งไป Checking ได้เมื่อรายการยาทั้งหมดสแกน Matching สำเร็จและฉลากเป็น `PRINTED`/`CHECKED`
 - Checking ส่ง `MEDICINECODE + QR_TOKEN`; ต้องตรงกันจึงผ่าน
 - ทั้ง scan ที่ถูกและผิดถูกบันทึกใน `TBLPACKAGEEVENTS`; scan ผิดไม่เลื่อนสถานะ
 - Dispensing ต้องกดเรียกผู้ป่วยก่อน แล้วจึงกด “ผู้ป่วยรับยาแล้ว” เพื่อจบแพ็กเกจ
@@ -100,6 +102,7 @@ Verify/Pending → Picking → Matching → Checking → Dispensing
 | `GET /api/v1/packages` | คิว Picking, Matching, Checking, Dispensing และ Complete |
 | `POST .../transitions` | ส่งแพ็กเกจไปขั้นถัดไป |
 | `POST .../matching/scan` | ตรวจรหัสยาและบันทึกผล scan |
+| `POST .../items/:itemId/label/print` | จำ template version, เพิ่มจำนวนพิมพ์ และคืนข้อมูลฉลากสำหรับ Browser Print |
 | `POST .../checking/validate-pair` | ตรวจรหัสยาคู่กับ QR ฉลาก |
 | `POST .../dispensing/status` | เรียกผู้ป่วยหรือยืนยันรับยา |
 
@@ -111,7 +114,8 @@ Verify/Pending → Picking → Matching → Checking → Dispensing
 - `PAYMENT_STATUS`: ตั้ง `BYPASSED`; รอ Finance API แล้วค่อยบังคับ `PAID`
 - `USER_APPROVE`/สิทธิ์: ตอนนี้ส่งชื่อ `Pharmacist` ชั่วคราวและเปิดทุก action เพราะยังไม่มี Login
 - Queue number: `QUEUE_NO` รองรับแล้ว แต่หน้า Verify เว้นค่าว่างจนได้รับ API ลำดับคิว
-- Label printer: Backend สร้าง QR และบันทึกสถานะพิมพ์ แต่ยังไม่ได้เชื่อม Print Agent/เครื่องพิมพ์จริง
+- Label printer: ใช้ Browser Print ขนาด 4×3 นิ้ว; `PRINTED` หมายถึงเปิดคำสั่งพิมพ์แล้ว
+  Browser ไม่สามารถยืนยันการพิมพ์จริงหรือการกดยกเลิกได้
 
 ## การตรวจโปรเจกต์
 

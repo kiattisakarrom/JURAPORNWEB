@@ -2,11 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Next.js blocks development assets requested through a LAN origin unless
-  // the origin is explicitly allowed. Keep both currently used networks and
-  // the Mac's stable Bonjour hostname available for workstation access.
+  // the origin is explicitly allowed. Allow the private LAN ranges used by
+  // the workstation so a DHCP address change does not break development.
   allowedDevOrigins: [
-    "192.168.1.177",
-    "172.20.10.3",
+    "192.168.1.*",
+    "172.20.10.*",
     "Kiattisaks-Laptop.local",
   ],
   async rewrites() {

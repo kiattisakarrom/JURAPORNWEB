@@ -8,12 +8,15 @@ export const workspacePathByScreen: Record<WorkspaceScreen, string> = {
   dispensing: "/dispensing",
   dashboard: "/dashboard",
   me: "/me-report",
+  drugmaster: "/drugmaster",
 };
 
 const screenByPath = new Map(Object.entries(workspacePathByScreen).map(([screen, pathname]) => [pathname, screen as WorkspaceScreen]));
 const verifyTabs = new Set<QueueStage>(["all", "verify", "picking", "matching", "checking", "dispensing", "pending", "complete", "missed-call"]);
 export type DispensingTab = "station" | "assist" | "history";
+export type DrugMasterTab = "allergy" | "interaction" | "label";
 const dispensingTabs = new Set<DispensingTab>(["station", "assist", "history"]);
+const drugMasterTabs = new Set<DrugMasterTab>(["allergy", "interaction", "label"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type WorkspacePopupTarget =
@@ -23,6 +26,7 @@ export type WorkspacePopupTarget =
 export type WorkspaceNavigationState = {
   tab: QueueStage;
   dispensingTab: DispensingTab;
+  drugMasterTab: DrugMasterTab;
   fromDate: string;
   toDate: string;
   popup: WorkspacePopupTarget | null;
@@ -39,6 +43,7 @@ export function parseWorkspaceNavigation(search: string, fallbackDate: string): 
   const rawTab = params.get("tab");
   const tab = rawTab && verifyTabs.has(rawTab as QueueStage) ? rawTab as QueueStage : "verify";
   const dispensingTab = rawTab && dispensingTabs.has(rawTab as DispensingTab) ? rawTab as DispensingTab : "station";
+  const drugMasterTab = rawTab && drugMasterTabs.has(rawTab as DrugMasterTab) ? rawTab as DrugMasterTab : "allergy";
   const rawFromDate = params.get("from");
   const rawToDate = params.get("to");
   const hasValidDates = isIsoDate(rawFromDate) && isIsoDate(rawToDate) && rawFromDate <= rawToDate;
@@ -61,12 +66,13 @@ export function parseWorkspaceNavigation(search: string, fallbackDate: string): 
   return {
     tab,
     dispensingTab,
+    drugMasterTab,
     fromDate,
     toDate,
     popup,
     needsCleanup:
       hasUnknownKeys
-      || (rawTab !== null && !verifyTabs.has(rawTab as QueueStage) && !dispensingTabs.has(rawTab as DispensingTab))
+      || (rawTab !== null && !verifyTabs.has(rawTab as QueueStage) && !dispensingTabs.has(rawTab as DispensingTab) && !drugMasterTabs.has(rawTab as DrugMasterTab))
       || !hasValidDates
       || hasInvalidPopup,
   };
@@ -76,6 +82,7 @@ export function buildWorkspaceHref({
   screen,
   tab = "verify",
   dispensingTab = "station",
+  drugMasterTab = "allergy",
   fromDate,
   toDate,
   popup = null,
@@ -83,6 +90,7 @@ export function buildWorkspaceHref({
   screen: WorkspaceScreen;
   tab?: QueueStage;
   dispensingTab?: DispensingTab;
+  drugMasterTab?: DrugMasterTab;
   fromDate: string;
   toDate: string;
   popup?: WorkspacePopupTarget | null;
@@ -90,6 +98,7 @@ export function buildWorkspaceHref({
   const params = new URLSearchParams();
   if (screen === "verify") params.set("tab", verifyTabs.has(tab) ? tab : "verify");
   if (screen === "dispensing") params.set("tab", dispensingTabs.has(dispensingTab) ? dispensingTab : "station");
+  if (screen === "drugmaster") params.set("tab", drugMasterTabs.has(drugMasterTab) ? drugMasterTab : "allergy");
   params.set("from", fromDate);
   params.set("to", toDate);
   if (screen === "verify" && popup) {

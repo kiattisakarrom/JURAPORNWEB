@@ -8,6 +8,7 @@ const sourceFiles = [
   '001_create_package_workflow_schema.sql',
   '005_enable_realtime_sync.sql',
   '009_dispensing_queue.sql',
+  '010_drug_label_templates.sql',
   '003_validate_package_workflow.sql',
   '006_validate_realtime_sync.sql',
 ];
@@ -91,7 +92,7 @@ const header = `/*
   GENERATED FILE - DO NOT EDIT DIRECTLY
 
   Regenerate with: npm run db:bundle
-  Included: 001 package workflow, 005 realtime, 009 dispensing, 003/006 validation
+  Included: 001 package workflow, 005 realtime, 009 dispensing, 010 drug labels, 003/006 validation
   Excluded: 002 destructive cleanup, 004 test seed, 007 rollback, 008 already folded into 001
 
   Prerequisite: select an existing copied hospital database containing the source tables.

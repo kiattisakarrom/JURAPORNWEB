@@ -83,6 +83,8 @@ export type PackageItem = {
     LABEL_STATUS: string;
     PRINT_COUNT: number;
     PRINTED_AT: string | null;
+    TEMPLATE_ID?: string | null;
+    TEMPLATE_VERSION?: number | null;
   };
 };
 
@@ -192,8 +194,8 @@ export function transitionPackage(packageId: string, action: PackageTransitionAc
   return apiPost<MedicationPackage>(`/packages/${packageId}/transitions`, { action });
 }
 
-export function scanPackageMatchingMedicine(packageId: string, medicineCode: string) {
-  return apiPost<MedicationPackage>(`/packages/${packageId}/matching/scan`, { medicineCode });
+export function scanPackageMatchingMedicine(packageId: string, medicineCode: string, packageItemId?: string) {
+  return apiPost<MedicationPackage>(`/packages/${packageId}/matching/scan`, { medicineCode, packageItemId });
 }
 
 export function validatePackageCheckingPair(packageId: string, medicineCode: string, labelQrToken: string) {
@@ -237,7 +239,11 @@ export function mapPackageToBasket(itemPackage: MedicationPackage, stage: Workfl
       name: item.COMMERCIALNAME?.trim() || item.MEDICINECODE,
       quantity: formatQuantity(item.ORDERQTY, item.ORDERUNITCODE),
       machine: "Box" as const,
-      status: (stage === "matching" ? item.MATCHING_STATUS : item.CHECKING_STATUS) === "COMPLETED" ? "done" as const : "wait" as const,
+      status: stage === "matching"
+        ? item.MATCHING_STATUS === "COMPLETED"
+          ? (["PRINTED", "CHECKED"].includes(item.LABEL.LABEL_STATUS) ? "done" as const : "doing" as const)
+          : "wait" as const
+        : item.CHECKING_STATUS === "COMPLETED" ? "done" as const : "wait" as const,
       printedAt: item.LABEL.PRINTED_AT ? formatTime(item.LABEL.PRINTED_AT) : undefined,
     })),
   };
