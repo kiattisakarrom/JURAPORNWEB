@@ -612,6 +612,56 @@ Client เรียก changes ด้วย cursor ของตนเองห�
 
 คู่มือติดตั้ง การทำงาน และข้อจำกัด: [REALTIME-SYNC.md](./REALTIME-SYNC.md)
 
+## Drug Master: ข้อมูลแพ้ยาผู้ป่วย
+
+API กลุ่มนี้อ่านและเพิ่มข้อมูลโดยตรงใน `dbo.TBLALLERGY` และรับ JSON body เพื่อไม่ใส่
+HN หรือชื่อผู้ป่วยใน URL ระบบรองรับเฉพาะยาที่มี `MEDICINECODE` ใน
+`dbo.TBLMEDITEMSINFO` และรอบนี้ไม่มี API แก้ไขหรือลบประวัติเดิม
+
+```http
+POST /drug-allergies/search-patients
+POST /drug-allergies/search-medicines
+POST /drug-allergies/history
+POST /drug-allergies
+```
+
+ค้นหาผู้ป่วยหรือยา:
+
+```json
+{ "query": "คำค้น", "limit": 20 }
+```
+
+อ่านประวัติแพ้ยาของผู้ป่วย:
+
+```json
+{ "patientId": "HN001" }
+```
+
+เพิ่มประวัติแพ้ยา:
+
+```json
+{
+  "patientId": "HN001",
+  "medicineCode": "1400000001",
+  "sideEffect": "ผื่นคัน",
+  "allergyType": "Drug Allergy",
+  "severity": "Moderate",
+  "adverseReactionLocal": "ผื่นแดงทั่วตัว",
+  "adverseReactionEnglish": "Generalized rash",
+  "correlationLevel": "Probable",
+  "certifiedBy": "Pharmacist A",
+  "remarks": "ยืนยันจากการซักประวัติ"
+}
+```
+
+- Backend ตรวจ HN กับ `TBLPATIENT` และตรวจรหัสยากับ `TBLMEDITEMSINFO` อีกครั้งใน transaction
+- `adverseReactionLocal`, `adverseReactionEnglish` และ `remarks` ไม่บังคับ ส่วน field อื่นบังคับ
+- ความยาวข้อมูลถูกตรวจตาม metadata ของคอลัมน์จริงในฐานที่เลือกก่อน INSERT
+- ข้อมูลเหมือนกันทุก field ตอบ `409`; ยาเดียวกันสามารถมีหลายประวัติได้หากรายละเอียดต่างกัน
+- `CREATEDATETIME` และ `READDATETIME` ใช้เวลาจาก SQL Server
+- Trigger `TR_TBLALLERGY_Realtime` ทำให้ Verify คำนวณ AI ใหม่เฉพาะผู้ป่วยที่เกี่ยวข้อง
+- AI จะแสดงใน Verify เฉพาะเมื่อ HN และรหัสยาตรงกับยาใน visit นั้น
+
 ## Drug label template และ Browser Print
 
 ต้องติดตั้ง `backend/sql/010_drug_label_templates.sql` ก่อนใช้ API กลุ่มนี้ เทมเพลตเป็น
@@ -653,7 +703,8 @@ Matching scan รองรับ `packageItemId` เพิ่มเติมเ�
 |---:|---|
 | `400` | Parameter ไม่ครบหรือรูปแบบไม่ถูกต้อง |
 | `404` | ไม่พบใบสั่งยาหรือผู้ป่วย |
-| `409` | ล็อก/สถานะขัดแย้ง, SOURCE_CHANGED หรือ RESYNC_REQUIRED ตาม endpoint |
+| `409` | ล็อก/สถานะขัดแย้ง, ข้อมูลแพ้ยาซ้ำ, SOURCE_CHANGED หรือ RESYNC_REQUIRED ตาม endpoint |
+| `422` | ข้อมูลเกินขนาดคอลัมน์ต้นทางหรือไม่ผ่านกติกาของ endpoint |
 | `503` | Backend ยังเชื่อมต่อฐานข้อมูลไม่ได้ |
 
 ระบบนี้ยังไม่มี Authentication จึงใช้สำหรับการพัฒนาในเครื่องเท่านั้น ห้ามเปิดให้เข้าถึงจากเครือข่ายภายนอกจนกว่าจะเพิ่มการยืนยันตัวตนและกำหนดสิทธิ์

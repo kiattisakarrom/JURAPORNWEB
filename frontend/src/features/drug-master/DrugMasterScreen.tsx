@@ -20,6 +20,7 @@ import {
 import { openDrugLabelPrint } from "@/lib/drug-label-print";
 import type { DrugMasterTab } from "@/lib/workspace-navigation";
 import { cn } from "@/lib/utils";
+import { DrugAllergyManager } from "./DrugAllergyManager";
 import { DrugLabelCanvas } from "./DrugLabelCanvas";
 
 const tabs: Array<{ id: DrugMasterTab; label: string }> = [
@@ -44,7 +45,7 @@ export function DrugMasterScreen({ tab, onTabChange }: { tab: DrugMasterTab; onT
           {tabs.map((item) => <button className={cn("relative h-14 px-4 text-sm font-bold text-slate-500 transition hover:text-blue-700", tab === item.id && "text-blue-700")} key={item.id} onClick={() => onTabChange(item.id)} type="button">{item.label}{tab === item.id ? <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-t bg-blue-600" /> : null}</button>)}
         </div>
       </nav>
-      {tab === "label" ? <DrugLabelDesigner /> : <ComingSoon title={tab === "allergy" ? "เพิ่มข้อมูลแพ้ยาผู้ป่วย" : "จับคู่ยาอันตราย"} />}
+      {tab === "allergy" ? <DrugAllergyManager /> : tab === "label" ? <DrugLabelDesigner /> : <ComingSoon title="จับคู่ยาอันตราย" />}
     </div>
   );
 }
