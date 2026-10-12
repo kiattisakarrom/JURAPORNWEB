@@ -189,16 +189,16 @@ function prescriptionKey(prescription: VerifyPrescriptionApiPrescription) {
 function validateFilters(filters: VerifyPrescriptionsFilters) {
   const hasDateRange = Boolean(filters.fromDate && filters.toDate);
   if (!filters.patientId && !filters.visitNumber && !hasDateRange) {
-    throw new Error("Verify prescriptions API requires patientId, visitNumber, or a complete date range");
+    throw Object.assign(new Error("Verify prescriptions API requires patientId, visitNumber, or a complete date range"), { uiMessage: { kind: "ui-message", key: "common.verifyFilterRequired" } as const });
   }
 
   if (Boolean(filters.fromDate) !== Boolean(filters.toDate)) {
-    throw new Error("fromDate and toDate must be provided together");
+    throw Object.assign(new Error("fromDate and toDate must be provided together"), { uiMessage: { kind: "ui-message", key: "common.datePairRequired" } as const });
   }
 }
 
 function assertVerifyPrescriptionsResponse(value: VerifyPrescriptionsApiResponse): asserts value is VerifyPrescriptionsApiResponse {
   if (!value || typeof value !== "object" || !Array.isArray(value.PATIENTS) || !value.PAGINATION) {
-    throw new Error("Verify prescriptions API returned an unsupported response shape");
+    throw Object.assign(new Error("Verify prescriptions API returned an unsupported response shape"), { uiMessage: { kind: "ui-message", key: "common.verifyResponseUnsupported" } as const });
   }
 }

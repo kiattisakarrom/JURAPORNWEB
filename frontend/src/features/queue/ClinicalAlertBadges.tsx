@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/i18n";
+
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -9,7 +11,7 @@ import { alertIcon, alertStyles } from "./queue-ui";
 export function ClinicalAlertBadges({
   alerts,
   clinicalAlerts = [],
-  emptyLabel = "ไม่มี",
+  emptyLabel,
   size = "compact",
 }: {
   alerts: AlertKind[];
@@ -17,6 +19,7 @@ export function ClinicalAlertBadges({
   emptyLabel?: string;
   size?: "compact" | "pill";
 }) {
+  const { t } = useTranslation();
   const alertKinds = useMemo(
     () => Array.from(new Set([...alerts, ...clinicalAlerts.map((alert) => alert.kind)])),
     [alerts, clinicalAlerts],
@@ -25,7 +28,7 @@ export function ClinicalAlertBadges({
   const allergyAlerts = clinicalAlerts.filter((alert) => alert.kind === "allergy");
 
   if (alertKinds.length === 0) {
-    return <span className="text-sm font-bold text-slate-300">{emptyLabel}</span>;
+    return <span className="text-sm font-bold text-slate-300">{emptyLabel ?? t("common.none")}</span>;
   }
 
   return (
@@ -64,6 +67,7 @@ function ClinicalAlertBadge({
   kind: "interaction" | "allergy";
   size: "compact" | "pill";
 }) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -100,7 +104,7 @@ function ClinicalAlertBadge({
       <button
         aria-describedby={isOpen && alerts.length > 0 ? tooltipId : undefined}
         aria-expanded={isOpen}
-        aria-label={kind === "interaction" ? "รายละเอียดคู่ยาที่มี Drug Interaction" : "รายละเอียดประวัติแพ้ยา"}
+        aria-label={kind === "interaction" ? t("queue.drugInteractionPairDetails") : t("queue.drugAllergyHistoryDetails")}
         className={cn(
           "flex shrink-0 items-center justify-center font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
           size === "pill" ? "min-h-7 rounded-full border px-2.5 py-1 text-xs" : "h-[30px] min-w-[30px] rounded-[10px] border px-1.5 text-[11px]",
@@ -146,7 +150,7 @@ function ClinicalAlertBadge({
                   {label}
                 </span>
                 <span className="text-sm font-black text-slate-900">
-                  {kind === "interaction" ? "Drug Interaction" : "ประวัติแพ้ยา"}
+                  {kind === "interaction" ? t("queue.drugInteraction") : t("common.drugAllergyHistory")}
                 </span>
               </div>
               <div className="space-y-3">
@@ -163,31 +167,32 @@ function ClinicalAlertBadge({
 }
 
 function ClinicalAlertDetail({ alert }: { alert: ClinicalAlert }) {
+  const { t } = useTranslation();
   if (alert.kind === "interaction") {
     const stockName = alert.stockNameEn || alert.stockCode;
     const withName = alert.withStockCodeNameEn || alert.withStockCode;
-    const severity = alert.severityTypeName || (alert.severityType === null ? "ไม่ระบุระดับความรุนแรง" : `Severity ${alert.severityType}`);
+    const severity = alert.severityTypeName || (alert.severityType === null ? t("queue.severityUnspecified") : t("common.severityWithCode", { code: alert.severityType }));
 
     return (
       <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
         <div className="text-sm font-black leading-5 text-slate-900">{stockName} ↔ {withName}</div>
         <div className="mt-1 font-mono text-[11px] font-bold text-slate-500">{alert.stockCode} ↔ {alert.withStockCode}</div>
         <div className={cn("mt-2 text-xs font-black", severityTextClass(alert.severityType))}>{severity}</div>
-        {alert.levelTypeName ? <DetailRow label="Level" value={alert.levelTypeName} /> : null}
-        {alert.effectsMemo ? <DetailRow label="ผลกระทบ" value={alert.effectsMemo} /> : null}
-        {alert.managementMemo ? <DetailRow label="การจัดการ" value={alert.managementMemo} /> : null}
+        {alert.levelTypeName ? <DetailRow label={t("queue.level")} value={alert.levelTypeName} /> : null}
+        {alert.effectsMemo ? <DetailRow label={t("queue.effects")} value={alert.effectsMemo} /> : null}
+        {alert.managementMemo ? <DetailRow label={t("queue.management")} value={alert.managementMemo} /> : null}
       </section>
     );
   }
 
   return (
     <section className="rounded-xl border border-red-100 bg-red-50/50 p-3">
-      <div className="text-sm font-black text-red-800">รหัสยา {alert.medicineCode}</div>
-      {alert.sideEffect ? <DetailRow label="อาการแพ้" value={alert.sideEffect} /> : null}
-      {alert.reaction ? <DetailRow label="Reaction" value={alert.reaction} /> : null}
-      {alert.allergyType ? <DetailRow label="ประเภท" value={alert.allergyType} /> : null}
-      {alert.severity ? <DetailRow label="ความรุนแรง" value={alert.severity} /> : null}
-      {alert.remarks ? <DetailRow label="หมายเหตุ" value={alert.remarks} /> : null}
+      <div className="text-sm font-black text-red-800">{t("common.drugCode")} {alert.medicineCode}</div>
+      {alert.sideEffect ? <DetailRow label={t("common.allergicSymptoms")} value={alert.sideEffect} /> : null}
+      {alert.reaction ? <DetailRow label={t("queue.reaction")} value={alert.reaction} /> : null}
+      {alert.allergyType ? <DetailRow label={t("common.type")} value={alert.allergyType} /> : null}
+      {alert.severity ? <DetailRow label={t("common.severity")} value={alert.severity} /> : null}
+      {alert.remarks ? <DetailRow label={t("common.notes")} value={alert.remarks} /> : null}
     </section>
   );
 }

@@ -7,7 +7,7 @@ export function createClientUuid(): string {
   const cryptoApi = globalThis.crypto;
   if (typeof cryptoApi?.randomUUID === "function") return cryptoApi.randomUUID();
   if (typeof cryptoApi?.getRandomValues !== "function") {
-    throw new Error("Browser นี้ไม่รองรับการสร้างรหัสที่ปลอดภัย กรุณาใช้ Browser รุ่นใหม่");
+    throw Object.assign(new Error("Browser นี้ไม่รองรับการสร้างรหัสที่ปลอดภัย กรุณาใช้ Browser รุ่นใหม่"), { uiMessage: { kind: "ui-message", key: "common.unsupportedBrowser" } as const });
   }
 
   const bytes = cryptoApi.getRandomValues(new Uint8Array(16));

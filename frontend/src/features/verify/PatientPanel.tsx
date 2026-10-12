@@ -1,5 +1,9 @@
 "use client";
 
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+
+import { uiMessage, type Translator, type TranslationKey, useTranslation, type UiMessage, Message } from "@/i18n";
+
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Pill, Printer, RefreshCw, Search, UserRound, X } from "lucide-react";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,21 +17,20 @@ import { getMachineStockCheck } from "@/lib/stock-check-api";
 import { cn } from "@/lib/utils";
 import type { DrugItem, PatientLabResult, PatientProfile, PatientQueueItem } from "@/types/pharmacy";
 import {
-  medicationErrorCategories,
-  medicationErrorSeverities,
   type MedicationErrorCategoryId,
   type MedicationErrorSeverityKey,
 } from "@/features/medication-error/MedicationErrorReportModal";
 import { PatientProfilePopup } from "@/features/patient-profile/PatientProfilePopup";
 import { ClinicalAlertBadges } from "@/features/queue/ClinicalAlertBadges";
 import { stageDotStyles, stageLabel, stageStyles } from "@/features/queue/queue-ui";
+import { localizeVerifyMedicationErrorOptions } from "./medication-error-ui";
 import { MachineStockCheck } from "./MachineStockCheck";
 
 const hadChecklistItems = [
-  { id: "dose", label: "ตรวจสอบขนาดยา (dose) ตามน้ำหนัก/ไต" },
-  { id: "strength", label: "ยืนยันความเข้มข้น / รูปแบบยา" },
-  { id: "double-check", label: "Double-check โดยเภสัชกรท่านที่ 2" },
-  { id: "red-label", label: "ติดฉลาก High-Alert สีแดง" },
+  { id: "dose", label: "verify.checkDoseBasedOnWeightKidneyFunction" },
+  { id: "strength", label: "verify.confirmStrengthDosageForm" },
+  { id: "double-check", label: "verify.doubleCheckByASecondPharmacist" },
+  { id: "red-label", label: "verify.attachRedHighAlertLabel" },
 ] as const;
 
 type HadChecklistItemId = (typeof hadChecklistItems)[number]["id"];
@@ -65,6 +68,7 @@ export function PatientPanel({
   onSaveNote: (note: string) => Promise<VerifyNoteSaveResult>;
   onVerify: (input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [hasRequestedStockCheck, setHasRequestedStockCheck] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isHadOpen, setIsHadOpen] = useState(false);
@@ -81,7 +85,7 @@ export function PatientPanel({
   const initialNote = verifyAccess?.noteDraft ?? "";
   const [note, setNote] = useState(initialNote);
   const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>(initialNote ? "saved" : "idle");
-  const [noteSaveError, setNoteSaveError] = useState<string | null>(null);
+  const [noteSaveError, setNoteSaveError] = useState<string | UiMessage | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const [showDiscardNoteConfirm, setShowDiscardNoteConfirm] = useState(false);
   const noteRef = useRef(initialNote);
@@ -108,10 +112,10 @@ export function PatientPanel({
     enabled: hasRequestedStockCheck,
   });
 
-  const displayProfile = useMemo(() => buildInlineProfile(patient, profile), [patient, profile]);
+  const displayProfile = useMemo(() => buildInlineProfile(patient, profile, t), [patient, profile, t]);
   const clinicalAlertSummary = useMemo(() => buildClinicalAlertSummary(patient), [patient]);
   const headerLabs = useMemo(() => buildHeaderLabs(patient.id, displayProfile.labs), [displayProfile.labs, patient.id]);
-  const bmi = calculateBmi(displayProfile.weight, displayProfile.height);
+  const bmi = calculateBmi(displayProfile.weight, displayProfile.height, t);
   const completedHadCount = hadChecklistItems.filter((item) => hadChecklist[item.id]).length;
   const selectedMedicationErrorDrug = patient.drugs.find((drug) => drug.id === selectedMedicationErrorDrugId);
 
@@ -201,8 +205,8 @@ export function PatientPanel({
           if (mountedRef.current) {
             setNoteSaveStatus(access?.isConnected === false ? "waiting" : "error");
             setNoteSaveError(access?.isConnected === false
-              ? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"
-              : "สิทธิ์ล็อกเปลี่ยนแล้ว ไม่สามารถบันทึก NOTE ได้");
+              ? uiMessage("common.disconnectedWaitingToSaveAutomatically")
+              : uiMessage("verify.lockAccessChangedUnableToSaveNote"));
           }
           return false;
         }
@@ -231,10 +235,10 @@ export function PatientPanel({
           if (mountedRef.current) {
             setNoteSaveStatus(isWaiting ? "waiting" : "error");
             setNoteSaveError(isWaiting
-              ? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"
+              ? uiMessage("common.disconnectedWaitingToSaveAutomatically")
               : accessLost
-                ? "สิทธิ์ล็อกเปลี่ยนแล้ว ไม่สามารถบันทึก NOTE ได้"
-                : "บันทึกไม่สำเร็จ ระบบจะลองใหม่อัตโนมัติ");
+                ? uiMessage("verify.lockAccessChangedUnableToSaveNote")
+                : uiMessage("verify.saveFailedTheSystemWillRetryAutomatically"));
           }
           return false;
         }
@@ -368,7 +372,7 @@ export function PatientPanel({
         <aside className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#f6f8fb]">
           <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-7">
             <div className="flex items-start gap-3 sm:gap-4">
-              <Button aria-label="ปิด" className="h-10 w-10 shrink-0 rounded-xl border-slate-200" disabled={isClosing} onClick={() => void requestClose()} size="icon" variant="outline">
+              <Button aria-label={t("common.close")} className="h-10 w-10 shrink-0 rounded-xl border-slate-200" disabled={isClosing} onClick={() => void requestClose()} size="icon" variant="outline">
                 <X className="h-5 w-5" />
               </Button>
               <div className="min-w-0 flex-1">
@@ -376,41 +380,42 @@ export function PatientPanel({
                   <h2 className="truncate text-2xl font-black text-slate-950">{displayProfile.fullName}</h2>
                   <Badge className={stageStyles[patient.stage]}>
                     <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[patient.stage])} />
-                    {stageLabel(patient.stage)}
+                    {stageLabel(patient.stage, t)}
                   </Badge>
-                  <Badge className={priorityClassName(patient.priority)}>{patient.priority === "Unspecified" ? "ไม่ระบุ Priority" : patient.priority}</Badge>
-                  <InlineHeaderDetail alert label="แพ้ยา / ADR" value={clinicalAlertSummary} />
-                  <InlineHeaderDetail label="Ward / Clinic" value={displayProfile.ward} />
-                  <InlineHeaderDetail label="Diagnosis" value={displayProfile.diagnosis} />
-                  <InlineHeaderDetail label="แพทย์ผู้ดูแล" value={displayProfile.doctor} />
-                  <InlineHeaderDetail label="Renal / DI" value={`${displayProfile.renal} · ${displayProfile.drugInteraction}`} />
+                  <Badge className={priorityClassName(patient.priority)}>{patient.priority === "Unspecified" ? t("verify.priorityUnspecified") : patient.priority}</Badge>
+                  <InlineHeaderDetail alert label={t("verify.allergyAdr")} value={clinicalAlertSummary} />
+                  <InlineHeaderDetail label={t("verify.wardClinic")} value={displayProfile.ward} />
+                  <InlineHeaderDetail label={t("verify.diagnosis")} value={displayProfile.diagnosis} />
+                  <InlineHeaderDetail label={t("verify.attendingDoctor")} value={displayProfile.doctor} />
+                  <InlineHeaderDetail label={t("verify.renalDi")} value={`${displayProfile.renal} · ${displayProfile.drugInteraction}`} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
-                  <span>VN {displayProfile.vn}</span>
-                  <span>HN {displayProfile.hn}</span>
-                  {pn ? <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-blue-700">PN {pn}</span> : null}
+                  <span>{t("common.vn")} {displayProfile.vn}</span>
+                  <span>{t("common.hn")} {displayProfile.hn}</span>
+                  {pn ? <span className="rounded-md bg-blue-50 px-2 py-0.5 font-mono text-blue-700">{t("common.pn")} {pn}</span> : null}
                   <span>{displayProfile.sex} · {displayProfile.age}</span>
                 </div>
               </div>
+              <LanguageSwitcher />
               <Button
-                aria-label="เปิด Subjective"
+                aria-label={t("verify.openSubjective")}
                 className="h-10 w-10 shrink-0 rounded-xl sm:w-auto sm:px-3"
                 onClick={() => setIsProfileOpen(true)}
                 size="icon"
-                title="Subjective"
+                title={t("common.subjective")}
                 variant="secondary"
               >
                 <UserRound className="h-4 w-4" />
-                <span className="hidden sm:inline">Subjective</span>
+                <span className="hidden sm:inline">{t("common.subjective")}</span>
               </Button>
             </div>
 
             <div className="mt-2 overflow-x-auto pb-1">
               <div className="flex min-w-max items-stretch gap-2">
                 <div className="min-w-[230px] rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 shadow-sm">
-                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">น้ำหนัก / ส่วนสูง / BMI</div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-500">{t("verify.weightHeightBmi")}</div>
                   <div className="mt-1 text-sm font-black text-blue-900">
-                    {displayProfile.weight} · {displayProfile.height} · BMI {bmi}
+                    {displayProfile.weight} · {displayProfile.height}  {t("verify.bmi")} {bmi}
                   </div>
                 </div>
                 {headerLabs.map((lab) => (
@@ -422,18 +427,18 @@ export function PatientPanel({
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-7">
             {verifyAccess?.isLoading ? (
-              <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-black text-blue-800">กำลังขอล็อก VN สำหรับ Verify...</div>
+              <div className="mb-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-black text-blue-800">{t("verify.requestingVnLockForVerify")}</div>
             ) : verifyAccess?.isReadOnly ? (
               <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-black leading-6 text-amber-800">
-                {verifyAccess.blockedReason ?? `เปิดแบบอ่านอย่างเดียว ${patient.activePackageId ? "เนื่องจากมีแพ็กเกจยาที่กำลังดำเนินการ ต้องรอผู้ป่วยรับยารอบนี้ก่อน" : `เนื่องจาก VN ถูกล็อกโดย ${verifyAccess.ownerName ?? "ผู้ใช้อื่น"}`}`}
+                {verifyAccess.blockedReason ?? t("verify.readOnlyView", { p0: patient.activePackageId ? uiMessage("verify.aMedicationPackageIsInProgressWait") : uiMessage("verify.vnIsLockedBy", { p0: verifyAccess.ownerName ?? uiMessage("common.anotherUser") }) })}
               </div>
             ) : (
-              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">ล็อก VN สำหรับการ Verify แล้ว ระบบต่ออายุล็อกทุก 30 วินาที</div>
+              <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-black text-emerald-800">{t("verify.vnLockedForVerifyTheLockRenews")}</div>
             )}
             <section>
               <div className="mb-3">
-                <h3 className="text-sm font-black text-slate-500">รายการยา ({patient.drugs.length})</h3>
-                <p className="mt-1 text-xs font-bold text-slate-400">เลือกรายการยาที่พบปัญหาก่อนกดปุ่ม รายงาน ME</p>
+                <h3 className="text-sm font-black text-slate-500">{t("common.medicationsHeading")}{patient.drugs.length})</h3>
+                <p className="mt-1 text-xs font-bold text-slate-400">{t("verify.selectAMedicationWithAnIssueBefore")}</p>
               </div>
 
               <div className="space-y-3">
@@ -476,7 +481,7 @@ export function PatientPanel({
                                 {drug.MEDICINECODE ?? "—"}
                               </span>
                               {isSelectedForMedicationError ? (
-                                <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                                <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">{t("common.selectedForMeReport")}</span>
                               ) : null}
                               {drug.workflowStatus ? (
                                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-black text-indigo-700">
@@ -497,8 +502,7 @@ export function PatientPanel({
                               ) : (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-black text-emerald-700">
                                   <CheckCircle2 className="h-3.5 w-3.5" />
-                                  ผ่านการตรวจสอบ
-                                </span>
+                                  {t("verify.checkPassed")}</span>
                               )}
                             </div>
                           </div>
@@ -513,8 +517,7 @@ export function PatientPanel({
                                 onChange={() => togglePackageDrug(drug.id)}
                                 type="checkbox"
                               />
-                              ส่งรอบด่วนนี้
-                            </label>
+                              {t("verify.sendInThisUrgentBatch")}</label>
                           ) : null}
                           <div>
                             <div className="text-sm font-black text-indigo-500">{drug.source}</div>
@@ -531,7 +534,7 @@ export function PatientPanel({
 
             <section className="mt-6">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="text-sm font-black text-slate-500" htmlFor="verify-note">บันทึก / NOTE ถึงจุด Dispensing</label>
+                <label className="text-sm font-black text-slate-500" htmlFor="verify-note">{t("common.noteForDispensing")}</label>
                 <NoteSaveIndicator error={noteSaveError} status={noteSaveStatus} />
               </div>
               <textarea
@@ -541,7 +544,7 @@ export function PatientPanel({
                 maxLength={1000}
                 onBlur={() => void flushNote()}
                 onChange={(event) => changeNote(event.target.value)}
-                placeholder="พิมพ์บันทึกเพิ่มเติม..."
+                placeholder={t("verify.enterAdditionalNotes")}
                 value={note}
               />
               <div className="mt-1 text-right text-xs font-bold text-slate-400">{note.length}/1,000</div>
@@ -550,14 +553,13 @@ export function PatientPanel({
             <section className="mt-6">
               <div className="mb-3 flex items-center gap-2 text-sm font-black uppercase tracking-[0.12em] text-slate-400">
                 <AlertTriangle className="h-4 w-4" />
-                Issues Detected
-              </div>
+                {t("verify.issuesDetected")}</div>
               <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-violet-900 shadow-sm">
                 <div className="flex items-start gap-3">
                   <Pill className="mt-1 h-4 w-4 text-violet-600" />
                   <div>
-                    <div className="font-black">{patient.issue?.title ?? "No Critical Issue"}</div>
-                    <div className="mt-2 text-sm font-medium text-violet-800">{patient.issue?.detail ?? "ยังไม่พบ alert สำคัญในรายการนี้"}</div>
+                    <div className="font-black">{patient.issue?.title ?? t("verify.noCriticalIssue")}</div>
+                    <div className="mt-2 text-sm font-medium text-violet-800">{patient.issue?.detail ?? t("verify.noCriticalAlertsInThisRecord")}</div>
                   </div>
                 </div>
               </div>
@@ -566,7 +568,7 @@ export function PatientPanel({
             <section className="mt-6">
               <Button className="h-14 w-full border-dashed border-blue-200 text-blue-700" disabled={isCheckingStock} onClick={requestStockCheck} variant="outline">
                 <Search className="h-5 w-5" />
-                {isCheckingStock ? "กำลังตรวจสอบเครื่องและสต็อก" : "ตรวจสอบเครื่องและสต็อก"}
+                {isCheckingStock ? t("verify.checkingMachineAndStock") : t("verify.checkMachineAndStock")}
               </Button>
               {hasRequestedStockCheck ? <MachineStockCheck stockCheck={stockCheck} isLoading={isCheckingStock} /> : null}
             </section>
@@ -575,8 +577,7 @@ export function PatientPanel({
           <footer className="safe-bottom shrink-0 border-t border-slate-200 bg-white px-5 py-4 sm:px-7">
             <label className="mb-3 flex cursor-pointer items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-black text-rose-800">
               <span>
-                ยาด่วน
-                <span className="ml-2 text-xs font-bold text-rose-600">เลือกเฉพาะรายการยาที่ต้องส่งทันที</span>
+                {t("verify.urgentMedication")}<span className="ml-2 text-xs font-bold text-rose-600">{t("verify.selectOnlyMedicationsToSendImmediately")}</span>
               </span>
               <input
                 checked={isUrgentPackage}
@@ -593,21 +594,19 @@ export function PatientPanel({
               <Button className="h-11 rounded-xl border-slate-200" onClick={() => setIsHadOpen(true)} variant="outline">
                 <ClipboardCheck className="h-4 w-4" />
                 <span className={cn("h-2.5 w-2.5 rounded-full", completedHadCount > 0 ? "bg-emerald-500" : "bg-slate-300")} />
-                HAD Checklist
-              </Button>
+                {t("verify.hadChecklist")}</Button>
               <Button className="h-11 rounded-xl border-slate-200" variant="outline">
                 <Printer className="h-4 w-4" />
-                พิมพ์ใบ NED
-              </Button>
+                {t("verify.printNed")}</Button>
               <Button
                 className="h-11 rounded-xl border-orange-200 text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
                 disabled={!selectedMedicationErrorDrug}
                 onClick={() => setIsMedicationErrorOpen(true)}
-                title={selectedMedicationErrorDrug ? `รายงาน ME สำหรับ ${selectedMedicationErrorDrug.name}` : "กรุณาเลือกรายการยาที่พบปัญหาก่อน"}
+                title={selectedMedicationErrorDrug ? t("common.meReportFor", { p0: selectedMedicationErrorDrug.name }) : t("common.selectTheMedicationWithAnIssueFirst")}
                 variant="outline"
               >
                 <RefreshCw className="h-4 w-4" />
-                {selectedMedicationErrorDrug ? "รายงาน ME" : "เลือกรายการยาก่อน"}
+                {selectedMedicationErrorDrug ? t("common.reportMe") : t("verify.selectMedicationFirst")}
               </Button>
               <Button
                 className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
@@ -615,7 +614,7 @@ export function PatientPanel({
                 onClick={() => void submitVerify()}
               >
                 <CheckCircle2 className="h-4 w-4" />
-                {isSubmittingVerify ? "กำลังบันทึก..." : isUrgentPackage ? `Verify ยาด่วน (${selectedPackageDrugIds.size})` : "Verify PN & ส่งต่อ"}
+                {isSubmittingVerify ? t("verify.saving") : isUrgentPackage ? t("verify.verifyUrgentMedication", { p0: selectedPackageDrugIds.size }) : t("verify.verifyPnForward")}
               </Button>
             </div>
           </footer>
@@ -662,21 +661,21 @@ export function PatientPanel({
                 <AlertTriangle className="h-5 w-5" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900" id="discard-note-title">NOTE ยังไม่ได้บันทึก</h3>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">ข้อความล่าสุดยังส่งไปยังระบบไม่สำเร็จ ต้องการรอให้ระบบบันทึกอัตโนมัติ หรือปิดและทิ้งข้อความล่าสุด?</p>
+                <h3 className="text-lg font-black text-slate-900" id="discard-note-title">{t("common.noteNotSaved")}</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{t("verify.theLatestTextCouldNotBeSaved")}</p>
               </div>
             </div>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
               <Button className="h-11 rounded-xl" onClick={() => {
                 setShowDiscardNoteConfirm(false);
                 if (verifyAccess?.isConnected) void runNoteSaveLoop();
-              }} variant="outline">รอบันทึกต่อ</Button>
+              }} variant="outline">{t("common.keepWaiting")}</Button>
               <Button className="h-11 rounded-xl bg-rose-600 text-white hover:bg-rose-700" onClick={() => {
                 noteDirtyRef.current = false;
                 noteSaveRequestedRef.current = false;
                 setShowDiscardNoteConfirm(false);
                 onClose();
-              }}>ปิดโดยไม่บันทึก</Button>
+              }}>{t("common.closeWithoutSaving")}</Button>
             </div>
           </section>
         </div>
@@ -686,37 +685,38 @@ export function PatientPanel({
   );
 }
 
-function NoteSaveIndicator({ error, status }: { error: string | null; status: NoteSaveStatus }) {
+function NoteSaveIndicator({ error, status }: { error: string | UiMessage | null; status: NoteSaveStatus }) {
+  const { t } = useTranslation();
   if (status === "saving") {
-    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-600"><RefreshCw className="h-3.5 w-3.5 animate-spin" />กำลังบันทึก…</span>;
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-600"><RefreshCw className="h-3.5 w-3.5 animate-spin" />{t("common.savingStatus")}</span>;
   }
   if (status === "saved") {
-    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />บันทึกแล้ว</span>;
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{t("common.saved")}</span>;
   }
   if (status === "waiting") {
-    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600"><AlertTriangle className="h-3.5 w-3.5" />{error ?? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"}</span>;
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600"><AlertTriangle className="h-3.5 w-3.5" /><Message value={error ?? t("common.disconnectedWaitingToSaveAutomatically")} /></span>;
   }
   if (status === "error") {
-    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-rose-600"><AlertTriangle className="h-3.5 w-3.5" />{error ?? "บันทึกไม่สำเร็จ"}</span>;
+    return <span className="inline-flex items-center gap-1.5 text-xs font-black text-rose-600"><AlertTriangle className="h-3.5 w-3.5" /><Message value={error ?? t("common.saveFailed")} /></span>;
   }
-  return <span className="text-xs font-bold text-slate-400">บันทึกอัตโนมัติ</span>;
+  return <span className="text-xs font-bold text-slate-400">{t("verify.autoSave")}</span>;
 }
 
-function buildInlineProfile(patient: PatientQueueItem, profile?: PatientProfile) {
+function buildInlineProfile(patient: PatientQueueItem, profile: PatientProfile | undefined, t: Translator) {
   return {
-    hn: patient.hn || profile?.hn || "ไม่ระบุ",
-    vn: patient.vn || profile?.vn || "ไม่ระบุ",
-    fullName: patient.name || profile?.fullName || "ไม่ระบุชื่อผู้ป่วย",
-    age: profile?.age ?? "ไม่ระบุอายุ",
-    sex: profile?.sex ?? "ไม่ระบุเพศ",
-    weight: profile?.weight ?? "ไม่ระบุ",
-    height: profile?.height ?? "ไม่ระบุ",
+    hn: patient.hn || profile?.hn || t("common.unspecified"),
+    vn: patient.vn || profile?.vn || t("common.unspecified"),
+    fullName: patient.name || profile?.fullName || t("common.patientNameUnspecified"),
+    age: profile?.age ?? t("verify.ageUnspecified"),
+    sex: profile?.sex ?? t("verify.sexUnspecified"),
+    weight: profile?.weight ?? t("common.unspecified"),
+    height: profile?.height ?? t("common.unspecified"),
     ward: patient.wardName ?? profile?.ward ?? "OPD",
-    doctor: patient.doctor ?? profile?.doctor ?? patient.pharmacist ?? "รอข้อมูลแพทย์",
-    diagnosis: profile?.diagnosis ?? "รอข้อมูลวินิจฉัย",
+    doctor: patient.doctor ?? profile?.doctor ?? patient.pharmacist ?? t("common.awaitingDoctorData"),
+    diagnosis: profile?.diagnosis ?? t("verify.awaitingDiagnosis"),
     allergy: profile?.keyHistory.allergy ?? patient.issue?.detail ?? "-",
-    renal: profile?.keyHistory.renal ?? "รอข้อมูล",
-    drugInteraction: profile?.keyHistory.drugInteraction ?? "รอข้อมูล",
+    renal: profile?.keyHistory.renal ?? t("verify.awaitingData"),
+    drugInteraction: profile?.keyHistory.drugInteraction ?? t("verify.awaitingData"),
     labs: profile?.labs && profile.labs.length > 0 ? profile.labs : fallbackLabs(patient),
   };
 }
@@ -796,12 +796,12 @@ function normalizeLabKey(key: string) {
   return key.replace(/[^a-z0-9]/gi, "").toUpperCase();
 }
 
-function calculateBmi(weight: string, height: string) {
+function calculateBmi(weight: string, height: string, t: Translator) {
   const weightKg = Number.parseFloat(weight);
   const heightCm = Number.parseFloat(height);
 
   if (!Number.isFinite(weightKg) || !Number.isFinite(heightCm) || heightCm <= 0) {
-    return "ไม่ระบุ";
+    return t("common.unspecified");
   }
 
   return (weightKg / ((heightCm / 100) ** 2)).toFixed(1);
@@ -863,16 +863,18 @@ function HadChecklistModal({
   onClose: () => void;
   onToggle: (id: HadChecklistItemId) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[#0f1f3d]/45 p-4" onClick={onClose}>
       <section className="w-full max-w-[480px] overflow-hidden rounded-2xl bg-white shadow-[0_24px_60px_rgba(15,31,61,0.32)]" onClick={(event) => event.stopPropagation()}>
-        <header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
+        <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-5">
+          <LanguageSwitcher />
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-black text-slate-900">HAD Checklist</h3>
-            <p className="mt-1 text-xs font-bold text-slate-400">High-Alert Drug — ต้องกรอกก่อนส่งต่อ Dispensing</p>
+            <h3 className="text-lg font-black text-slate-900">{t("verify.hadChecklist")}</h3>
+            <p className="mt-1 text-xs font-bold text-slate-400">{t("verify.highAlertDrugCompleteBeforeForwardingTo")}</p>
           </div>
           <Button className="h-9 w-9 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
             <X className="h-4 w-4" />
@@ -898,7 +900,7 @@ function HadChecklistModal({
                 >
                   <CheckCircle2 className="h-4 w-4" />
                 </span>
-                <span className="text-sm font-bold leading-6 text-slate-700">{item.label}</span>
+                <span className="text-sm font-bold leading-6 text-slate-700">{t(item.label as TranslationKey)}</span>
               </button>
             );
           })}
@@ -906,10 +908,9 @@ function HadChecklistModal({
 
         <footer className="flex gap-2 border-t border-slate-100 px-6 py-4">
           <Button className="h-11 rounded-xl border-slate-200 px-5" onClick={onClose} variant="outline">
-            ยกเลิก
-          </Button>
+            {t("common.cancel")}</Button>
           <Button className="h-11 flex-1 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={onClose}>
-            บันทึก & ส่งต่อ ({completedCount}/{hadChecklistItems.length})
+            {t("verify.saveForward")}{completedCount}/{hadChecklistItems.length})
           </Button>
         </footer>
       </section>
@@ -942,12 +943,14 @@ function MedicationErrorReportModal({
   subtype: string | null;
   onSubtypeChange: (subtype: string) => void;
 }) {
-  const selectedCategory = medicationErrorCategories.find((item) => item.id === category);
+  const { t } = useTranslation();
+  const { categories, severities } = localizeVerifyMedicationErrorOptions(t);
+  const selectedCategory = categories.find((item) => item.id === category);
   const selectedSubtype = selectedCategory?.options.find((item) => item.id === subtype);
   const selectionPath = [
-    selectedCategory?.label,
-    selectedSubtype?.label,
-    selectedSubtype && selectedSeverity ? `Severity ${selectedSeverity}` : undefined,
+    selectedCategory ? t(selectedCategory.label) : undefined,
+    selectedSubtype ? t(selectedSubtype.label) : undefined,
+    selectedSubtype && selectedSeverity ? t("common.severityWithCode", { code: selectedSeverity }) : undefined,
   ].filter(Boolean).join(" › ");
   const descriptionReady = description.trim().length > 0;
   const canSave = Boolean(category && subtype && selectedSeverity && descriptionReady);
@@ -955,13 +958,14 @@ function MedicationErrorReportModal({
   return (
     <div className="fixed inset-0 z-[72] flex items-center justify-center bg-[#0f1f3d]/45 p-4" onClick={onClose}>
       <section className="flex max-h-[92vh] w-full max-w-[660px] flex-col overflow-hidden rounded-3xl bg-white shadow-[0_30px_70px_rgba(15,31,61,0.4)]" onClick={(event) => event.stopPropagation()}>
-        <header className="flex items-center gap-3 border-b border-slate-100 px-6 py-5">
+        <header className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-6 py-5">
+          <LanguageSwitcher />
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
             <AlertTriangle className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-lg font-black text-slate-900">รายงานความคลาดเคลื่อนทางยา</h3>
-            <p className="mt-1 truncate text-xs font-bold leading-5 text-slate-400">{drug.name} · {selectionPath || "เลือกประเภทความคลาดเคลื่อน"}</p>
+            <h3 className="text-lg font-black text-slate-900">{t("verify.medicationErrorReport")}</h3>
+            <p className="mt-1 truncate text-xs font-bold leading-5 text-slate-400">{drug.name} · {selectionPath || t("verify.selectErrorType")}</p>
           </div>
           <Button className="h-9 w-9 rounded-xl border-slate-200" onClick={onClose} size="icon" variant="outline">
             <X className="h-4 w-4" />
@@ -975,24 +979,24 @@ function MedicationErrorReportModal({
                 <Pill className="h-5 w-5" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-black uppercase tracking-[0.08em] text-blue-500">ยาที่รายงานปัญหา</div>
+                <div className="text-xs font-black uppercase tracking-[0.08em] text-blue-500">{t("verify.medicationWithReportedIssue")}</div>
                 <div className="mt-1 text-base font-black text-blue-950">{drug.name}</div>
                 <div className="mt-1 text-xs font-bold leading-5 text-blue-700">{drug.sig}</div>
                 <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-slate-500">
-                  <span>แหล่งจ่าย {drug.source}</span>
-                  <span>เครื่อง {drug.machineCode}</span>
+                  <span>{t("verify.source")} {drug.source}</span>
+                  <span>{t("verify.machine")} {drug.machineCode}</span>
                 </div>
               </div>
             </div>
           </section>
 
-          <div className="mb-3 mt-6 text-sm font-black text-slate-800">ประเภทความคลาดเคลื่อน</div>
+          <div className="mb-3 mt-6 text-sm font-black text-slate-800">{t("verify.errorType")}</div>
           <div className="grid gap-3 sm:grid-cols-3">
-            {medicationErrorCategories.map((item) => (
+            {categories.map((item) => (
               <MedicationErrorSelectionButton
                 active={category === item.id}
                 key={item.id}
-                label={item.label}
+                label={t(item.label as TranslationKey)}
                 onClick={() => onCategoryChange(item.id)}
               />
             ))}
@@ -1000,15 +1004,15 @@ function MedicationErrorReportModal({
 
           {selectedCategory ? (
             <section className="mt-6">
-              <div className="text-sm font-black text-slate-800">รายการความคลาดเคลื่อน</div>
-              <p className="mt-1 text-xs font-bold text-slate-400">เลือก 1 รายการจาก {selectedCategory.label}</p>
+              <div className="text-sm font-black text-slate-800">{t("verify.errorSubtype")}</div>
+              <p className="mt-1 text-xs font-bold text-slate-400">{t("verify.selectOneFrom")} {t(selectedCategory.label)}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {selectedCategory.options.map((option) => (
                   <MedicationErrorSelectionButton
                     active={subtype === option.id}
                     compact
                     key={`${selectedCategory.id}-${option.id}`}
-                    label={option.label}
+                    label={t(option.label)}
                     onClick={() => onSubtypeChange(option.id)}
                   />
                 ))}
@@ -1018,10 +1022,10 @@ function MedicationErrorReportModal({
 
           {selectedSubtype ? (
             <section className="mt-6">
-              <div className="text-sm font-black text-slate-800">Severity</div>
-              <p className="mt-1 text-xs font-bold text-slate-400">เลือก 1 ระดับ — A: ยังไม่เกิด · B-D: ไม่เป็นอันตราย · E-H: เป็นอันตราย · I: เสียชีวิต</p>
+              <div className="text-sm font-black text-slate-800">{t("verify.severity")}</div>
+              <p className="mt-1 text-xs font-bold text-slate-400">{t("verify.selectOneLevelAPotentialErrorB")}</p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {medicationErrorSeverities.map((severity) => {
+                {severities.map((severity) => {
                   const selected = selectedSeverity === severity.key;
 
                   return (
@@ -1053,30 +1057,26 @@ function MedicationErrorReportModal({
 
           <section className="mt-6">
             <label className="text-sm font-black text-slate-800" htmlFor="medication-error-description">
-              รายละเอียด / สาเหตุการแก้ไข
-            </label>
+              {t("verify.detailsCauseAndCorrectiveAction")}</label>
             <textarea
               className="mt-2 min-h-28 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
               id="medication-error-description"
               onChange={(event) => onDescriptionChange(event.target.value)}
-              placeholder="อธิบายความคลาดเคลื่อนที่พบ การแก้ไข และผลต่อผู้ป่วย..."
+              placeholder={t("verify.describeTheErrorCorrectiveActionAndPatient")}
               value={description}
             />
             {!canSave ? (
               <p className="mt-2 text-xs font-bold text-amber-600">
-                กรุณาเลือกประเภท รายการความคลาดเคลื่อน ระดับ Severity และกรอกรายละเอียดก่อนบันทึกรายงาน
-              </p>
+                {t("verify.selectAnErrorTypeSubtypeAndSeverity")}</p>
             ) : null}
           </section>
         </div>
 
         <footer className="flex gap-3 border-t border-slate-100 px-6 py-4">
           <Button className="h-12 rounded-xl border-slate-200 px-6" onClick={onClose} variant="outline">
-            ยกเลิก
-          </Button>
+            {t("common.cancel")}</Button>
           <Button className="h-12 flex-1 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:bg-slate-300" disabled={!canSave} onClick={onSave}>
-            บันทึกรายงาน
-          </Button>
+            {t("verify.saveReport")}</Button>
         </footer>
       </section>
     </div>

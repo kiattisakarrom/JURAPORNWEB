@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/i18n";
+
 import { QrCode } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { DrugLabelDataKey, DrugLabelElement, DrugLabelTemplate } from "@/lib/drug-label-api";
@@ -15,6 +17,7 @@ export function DrugLabelCanvas({ template, data, selectedId, interactive = fals
   onSelect?: (id: string) => void;
   onElementChange?: (element: DrugLabelElement) => void;
 }) {
+  const { t } = useTranslation();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [gesture, setGesture] = useState<{
     mode: PointerMode;
@@ -59,7 +62,7 @@ export function DrugLabelCanvas({ template, data, selectedId, interactive = fals
     <div
       className="relative mx-auto select-none overflow-hidden bg-white shadow-[0_18px_55px_rgba(15,31,61,0.18)]"
       ref={canvasRef}
-      style={{ aspectRatio: `${template.WIDTH_MM}/${template.HEIGHT_MM}`, containerType: "inline-size", fontFamily: "Sarabun, sans-serif", width: "min(100%, 940px)" }}
+      style={{ aspectRatio: `${template.WIDTH_MM}/${template.HEIGHT_MM}`, containerType: "inline-size", fontFamily: "Chulabhorn Likit Text, sans-serif", width: "min(100%, 940px)" }}
     >
       {[...template.DEFINITION.elements].sort((a, b) => a.zIndex - b.zIndex).map((element) => {
         const selected = selectedId === element.id;
@@ -94,9 +97,9 @@ export function DrugLabelCanvas({ template, data, selectedId, interactive = fals
           >
             {element.type === "logo" ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img alt="โลโก้โรงพยาบาล" className="h-full w-full" draggable={false} src={template.LOGO_DATA_URL.startsWith("data:") ? template.LOGO_DATA_URL : (element.imageSrc ?? template.LOGO_DATA_URL) || "/assets/juraporn-hospital-emblem.png"} style={{ objectFit: element.fit ?? "contain" }} />
+              <img alt={t("drug-master.hospitalLogo")} className="h-full w-full" draggable={false} src={template.LOGO_DATA_URL.startsWith("data:") ? template.LOGO_DATA_URL : (element.imageSrc ?? template.LOGO_DATA_URL) || "/assets/juraporn-hospital-emblem.png"} style={{ objectFit: element.fit ?? "contain" }} />
             ) : element.type === "qr" ? (
-              <div className="flex h-full w-full flex-col items-center justify-center bg-white text-slate-950"><QrCode className="h-[78%] w-[78%]" strokeWidth={1.5} /><span className="text-[7px] font-semibold">QR</span></div>
+              <div className="flex h-full w-full flex-col items-center justify-center bg-white text-slate-950"><QrCode className="h-[78%] w-[78%]" strokeWidth={1.5} /><span className="text-[7px] font-semibold">{t("drug-master.qr")}</span></div>
             ) : element.type === "line" ? (
               <div className="absolute inset-x-0 top-1/2 border-t-2 border-dashed border-current" />
             ) : element.type === "box" ? null : (
@@ -104,7 +107,7 @@ export function DrugLabelCanvas({ template, data, selectedId, interactive = fals
                 className="flex h-full w-full whitespace-pre-wrap leading-[1.16]"
                 style={{
                   alignItems: element.textAlign === "center" ? "center" : "flex-start",
-                  fontFamily: "Sarabun, sans-serif",
+                  fontFamily: "Chulabhorn Likit Text, sans-serif",
                   fontSize: `${Math.max(6, element.fontSizePt ?? 10) * 0.352778 / template.WIDTH_MM * 100}cqw`,
                   fontWeight: element.fontWeight ?? 400,
                   justifyContent: element.textAlign === "right" ? "flex-end" : element.textAlign === "center" ? "center" : "flex-start",
@@ -114,7 +117,7 @@ export function DrugLabelCanvas({ template, data, selectedId, interactive = fals
             )}
             {interactive && selected ? (
               <button
-                aria-label="ปรับขนาด element"
+                aria-label={t("drug-master.resizeElement")}
                 className="absolute bottom-0 right-0 h-3.5 w-3.5 cursor-se-resize rounded-sm border border-white bg-blue-600 shadow"
                 onPointerDown={(event) => {
                   event.preventDefault();

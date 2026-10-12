@@ -1,5 +1,9 @@
 "use client";
 
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+
+import { frontendErrorMessage, uiMessage, useTranslation, type UiMessage, Message } from "@/i18n";
+
 import { AlertTriangle, CheckCircle2, NotebookPen, RefreshCw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -20,10 +24,11 @@ export function PackageNoteModal({
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const initialNote = itemPackage.VERIFY_NOTE ?? "";
   const [note, setNote] = useState(initialNote);
   const [saveStatus, setSaveStatus] = useState<NoteSaveStatus>(initialNote ? "saved" : "idle");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | UiMessage | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
@@ -72,7 +77,7 @@ export function PackageNoteModal({
         if (!connectedRef.current) {
           if (mountedRef.current) {
             setSaveStatus("waiting");
-            setSaveError("ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ");
+            setSaveError(uiMessage("common.disconnectedWaitingToSaveAutomatically"));
           }
           return false;
         }
@@ -104,8 +109,8 @@ export function PackageNoteModal({
             const waiting = !navigator.onLine || !connectedRef.current;
             setSaveStatus(waiting ? "waiting" : "error");
             setSaveError(waiting
-              ? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"
-              : error instanceof Error ? error.message : "บันทึก NOTE ไม่สำเร็จ");
+              ? uiMessage("common.disconnectedWaitingToSaveAutomatically")
+              : frontendErrorMessage(error, uiMessage("workflow.unableToSaveNote")));
           }
           return false;
         }
@@ -172,25 +177,26 @@ export function PackageNoteModal({
             <NotebookPen className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-black text-slate-950" id="package-note-title">บันทึก / NOTE ถึงจุด Dispensing</h2>
+            <h2 className="text-xl font-black text-slate-950" id="package-note-title">{t("common.noteForDispensing")}</h2>
             <p className="mt-1 text-sm font-bold text-slate-500">
-              VN {itemPackage.VISITNUMBER} · {itemPackage.PAGE_NOW === "MATCHING" ? "Matching" : "Checking"}
+              {t("common.vn")}{itemPackage.VISITNUMBER} · {itemPackage.PAGE_NOW === "MATCHING" ? t("common.matching") : t("common.checking")}
             </p>
           </div>
-          <Button aria-label="ปิด NOTE" className="h-10 w-10 rounded-xl" disabled={isClosing} onClick={() => void requestClose()} size="icon" variant="outline">
+          <LanguageSwitcher />
+          <Button aria-label={t("workflow.closeNote")} className="h-10 w-10 rounded-xl" disabled={isClosing} onClick={() => void requestClose()} size="icon" variant="outline">
             <X className="h-4 w-4" />
           </Button>
         </header>
 
         <div className="p-5 sm:p-6">
-          <label className="text-sm font-black text-slate-700" htmlFor="package-dispensing-note">ข้อความบันทึก</label>
+          <label className="text-sm font-black text-slate-700" htmlFor="package-dispensing-note">{t("workflow.noteText")}</label>
           <textarea
             className="mt-2 min-h-52 w-full resize-y rounded-2xl border border-slate-300 bg-white p-4 text-sm font-semibold leading-7 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             id="package-dispensing-note"
             maxLength={1000}
             onBlur={() => void flushNote()}
             onChange={(event) => changeNote(event.target.value)}
-            placeholder="ระบุ NOTE ที่ต้องการส่งต่อไปจนถึงจุด Dispensing"
+            placeholder={t("workflow.enterANoteToForwardToDispensing")}
             value={note}
           />
           <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -200,11 +206,10 @@ export function PackageNoteModal({
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
-          <Button className="h-11 rounded-xl" disabled={isClosing} onClick={() => void requestClose()} variant="outline">ปิด</Button>
+          <Button className="h-11 rounded-xl" disabled={isClosing} onClick={() => void requestClose()} variant="outline">{t("common.close")}</Button>
           <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" disabled={!isDirty || saveStatus === "saving" || !connected} onClick={() => void flushNote()}>
             <Save className="h-4 w-4" />
-            บันทึกตอนนี้
-          </Button>
+            {t("workflow.saveNow")}</Button>
         </footer>
       </section>
 
@@ -214,22 +219,22 @@ export function PackageNoteModal({
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-1 h-6 w-6 shrink-0 text-amber-600" />
               <div>
-                <h3 className="text-lg font-black text-slate-900" id="discard-package-note-title">NOTE ยังไม่ได้บันทึก</h3>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">ข้อความล่าสุดยังส่งไปยังระบบไม่สำเร็จ ต้องการรอบันทึกต่อ หรือปิดและทิ้งข้อความล่าสุด?</p>
+                <h3 className="text-lg font-black text-slate-900" id="discard-package-note-title">{t("common.noteNotSaved")}</h3>
+                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{t("workflow.theLatestTextCouldNotBeSaved")}</p>
               </div>
             </div>
             <div className="mt-6 grid gap-2 sm:grid-cols-2">
               <Button className="h-11 rounded-xl" onClick={() => {
                 setShowDiscardConfirm(false);
                 if (connectedRef.current) void runSaveLoop();
-              }} variant="outline">รอบันทึกต่อ</Button>
+              }} variant="outline">{t("common.keepWaiting")}</Button>
               <Button className="h-11 rounded-xl bg-rose-600 text-white hover:bg-rose-700" onClick={() => {
                 dirtyRef.current = false;
                 setIsDirty(false);
                 saveRequestedRef.current = false;
                 setShowDiscardConfirm(false);
                 onClose();
-              }}>ปิดโดยไม่บันทึก</Button>
+              }}>{t("common.closeWithoutSaving")}</Button>
             </div>
           </section>
         </div>
@@ -239,10 +244,11 @@ export function PackageNoteModal({
   );
 }
 
-function PackageNoteSaveIndicator({ error, status }: { error: string | null; status: NoteSaveStatus }) {
-  if (status === "saving") return <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-600"><RefreshCw className="h-3.5 w-3.5 animate-spin" />กำลังบันทึก…</span>;
-  if (status === "saved") return <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />บันทึกแล้ว</span>;
-  if (status === "waiting") return <span className="text-xs font-black text-amber-700">{error ?? "ขาดการเชื่อมต่อ — รอบันทึกอัตโนมัติ"}</span>;
-  if (status === "error") return <span className="text-xs font-black text-rose-600">{error ?? "บันทึกไม่สำเร็จ"}</span>;
-  return <span className="text-xs font-bold text-slate-400">บันทึกอัตโนมัติหลังหยุดพิมพ์</span>;
+function PackageNoteSaveIndicator({ error, status }: { error: string | UiMessage | null; status: NoteSaveStatus }) {
+  const { t } = useTranslation();
+  if (status === "saving") return <span className="inline-flex items-center gap-1.5 text-xs font-black text-blue-600"><RefreshCw className="h-3.5 w-3.5 animate-spin" />{t("common.savingStatus")}</span>;
+  if (status === "saved") return <span className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600"><CheckCircle2 className="h-3.5 w-3.5" />{t("common.saved")}</span>;
+  if (status === "waiting") return <span className="text-xs font-black text-amber-700"><Message value={error ?? t("common.disconnectedWaitingToSaveAutomatically")} /></span>;
+  if (status === "error") return <span className="text-xs font-black text-rose-600"><Message value={error ?? t("common.saveFailed")} /></span>;
+  return <span className="text-xs font-bold text-slate-400">{t("workflow.autoSaveAfterTypingStops")}</span>;
 }

@@ -14,10 +14,10 @@ const template = {
   ] },
 };
 
-test("renders an exact 4x3-inch page, QR, bundled Sarabun and missing values as dash", async () => {
+test("renders an exact 4x3-inch page, QR, bundled Chulabhorn Likit and missing values as dash", async () => {
   const html = await buildDrugLabelPrintHtml(template, { patientName: "Patient A", qrToken: "QR-001" });
   assert.match(html, /@page\{size:101\.6mm 76\.2mm;margin:0\}/);
-  assert.match(html, /sarabun-thai-400-normal\.woff2/);
+  assert.match(html, /chulabhornlikittext-regular\.woff2/);
   assert.match(html, /data:image\/png;base64/);
   assert.match(html, /Patient A/);
   assert.match(html, />—<\/div>/);

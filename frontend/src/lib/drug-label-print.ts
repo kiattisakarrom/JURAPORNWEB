@@ -23,7 +23,7 @@ function commonStyle(element: DrugLabelElement) {
 }
 
 function textStyle(element: DrugLabelElement) {
-  return [commonStyle(element), `font-family:'Sarabun',sans-serif`, `font-size:${element.fontSizePt ?? 10}pt`,
+  return [commonStyle(element), `font-family:'Chulabhorn Likit Text',sans-serif`, `font-size:${element.fontSizePt ?? 10}pt`,
     `font-weight:${element.fontWeight ?? 400}`, `text-align:${element.textAlign ?? 'left'}`,
     'white-space:pre-wrap', 'line-height:1.22', 'display:flex',
     `align-items:${element.textAlign === 'center' ? 'center' : 'flex-start'}`,
@@ -53,13 +53,13 @@ export async function buildDrugLabelPrintHtml(template: DrugLabelTemplate, data:
     .sort((a, b) => a.zIndex - b.zIndex).map(element => renderElement(element, template, data)));
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>Drug label</title>
     <style>
-      @font-face{font-family:'Sarabun';src:url('/fonts/sarabun-thai-400-normal.woff2') format('woff2');font-weight:400;font-style:normal;font-display:block}
-      @font-face{font-family:'Sarabun';src:url('/fonts/sarabun-thai-500-normal.woff2') format('woff2');font-weight:500;font-style:normal;font-display:block}
-      @font-face{font-family:'Sarabun';src:url('/fonts/sarabun-thai-600-normal.woff2') format('woff2');font-weight:600;font-style:normal;font-display:block}
-      @font-face{font-family:'Sarabun';src:url('/fonts/sarabun-thai-700-normal.woff2') format('woff2');font-weight:700;font-style:normal;font-display:block}
+      @font-face{font-family:'Chulabhorn Likit Text';src:url('/fonts/chulabhornlikittext-regular.woff2') format('woff2');font-weight:400;font-style:normal;font-display:block}
+      @font-face{font-family:'Chulabhorn Likit Text';src:url('/fonts/chulabhornlikittext-medium.woff2') format('woff2');font-weight:500;font-style:normal;font-display:block}
+      @font-face{font-family:'Chulabhorn Likit Text';src:url('/fonts/chulabhornlikittext-light.woff2') format('woff2');font-weight:300;font-style:normal;font-display:block}
+      @font-face{font-family:'Chulabhorn Likit Text';src:url('/fonts/chulabhornlikittext-bold.woff2') format('woff2');font-weight:700;font-style:normal;font-display:block}
       @page{size:${template.WIDTH_MM}mm ${template.HEIGHT_MM}mm;margin:0}
       html,body{width:${template.WIDTH_MM}mm;height:${template.HEIGHT_MM}mm;margin:0;padding:0;overflow:hidden}
-      body{font-family:'Sarabun',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      body{font-family:'Chulabhorn Likit Text',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
       .label{position:relative;width:${template.WIDTH_MM}mm;height:${template.HEIGHT_MM}mm;background:white;overflow:hidden}
     </style></head><body><main class="label">${elements.join('')}</main></body></html>`;
 }
@@ -77,7 +77,7 @@ export async function openDrugLabelPrint(model: Pick<DrugLabelPrintModel, 'TEMPL
   frame.style.pointerEvents = 'none';
   document.body.appendChild(frame);
   const documentRef = frame.contentDocument;
-  if (!documentRef || !frame.contentWindow) throw new Error('ไม่สามารถเปิดหน้าพิมพ์ได้');
+  if (!documentRef || !frame.contentWindow) throw Object.assign(new Error("ไม่สามารถเปิดหน้าพิมพ์ได้"), { uiMessage: { kind: "ui-message", key: "common.printUnavailable" } as const });
   documentRef.open();
   documentRef.write(html);
   documentRef.close();

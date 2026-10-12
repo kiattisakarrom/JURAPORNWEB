@@ -1,5 +1,9 @@
 "use client";
 
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+
+import { useTranslation } from "@/i18n";
+
 import { X } from "lucide-react";
 import { type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +12,7 @@ import { getPatientProfile } from "@/lib/patient-profile-api";
 import type { PatientProfile, PatientQueueItem } from "@/types/pharmacy";
 
 export function PatientProfilePopup({ patient, onClose }: { patient: PatientQueueItem; onClose: () => void }) {
+  const { t } = useTranslation();
   const { data: profile, isLoading } = useQuery({
     queryKey: ["patient-profile", patient.id],
     queryFn: () => getPatientProfile(patient),
@@ -17,9 +22,10 @@ export function PatientProfilePopup({ patient, onClose }: { patient: PatientQueu
     <aside className="fixed inset-2 z-10 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:inset-3 xl:static xl:h-full xl:w-[520px] xl:shrink-0">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white p-5">
         <div>
-          <h2 className="text-xl font-black text-slate-950">Subjective</h2>
-          <p className="mt-1 text-sm font-bold text-slate-400">ข้อมูลจาก clinical note service</p>
+          <h2 className="text-xl font-black text-slate-950">{t("common.subjective")}</h2>
+          <p className="mt-1 text-sm font-bold text-slate-400">{t("patient-profile.dataFromClinicalNoteService")}</p>
         </div>
+        <LanguageSwitcher />
         <Button onClick={onClose} size="icon" variant="ghost">
           <X className="h-5 w-5" />
         </Button>
@@ -27,7 +33,7 @@ export function PatientProfilePopup({ patient, onClose }: { patient: PatientQueu
 
       <div className="space-y-6 p-5">
         {isLoading || !profile ? (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">กำลังโหลดข้อมูล Subjective...</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold text-slate-500">{t("patient-profile.loadingSubjectiveData")}</div>
         ) : (
           <PatientProfileContent profile={profile} />
         )}
@@ -37,10 +43,11 @@ export function PatientProfilePopup({ patient, onClose }: { patient: PatientQueu
 }
 
 function PatientProfileContent({ profile }: { profile: PatientProfile }) {
+  const { t } = useTranslation();
   return (
     <>
       <div
-        aria-label="ข้อความ Subjective แบบอ่านอย่างเดียว"
+        aria-label={t("patient-profile.readOnlySubjectiveText")}
         aria-readonly="true"
         className="h-[clamp(320px,48vh,460px)] overflow-y-auto whitespace-pre-line rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm font-semibold leading-7 text-slate-700 shadow-inner outline-none focus-visible:border-blue-400 focus-visible:ring-4 focus-visible:ring-blue-100"
         role="textbox"
@@ -49,12 +56,12 @@ function PatientProfileContent({ profile }: { profile: PatientProfile }) {
         {profile.subjective}
       </div>
 
-      <ProfileSection title="Medical Reconcile">
+      <ProfileSection title={t("patient-profile.medicationReconciliation")}>
         <div className="overflow-x-auto rounded-xl border border-slate-200">
           <table className="w-full min-w-[620px] text-left text-sm">
             <thead className="bg-slate-50 text-xs font-black text-slate-500">
               <tr>
-                {["ชื่อยา", "จำนวน", "วิธีกิน", "วันที่จ่าย"].map((heading) => (
+                {[t("common.medicationName"), t("common.quantity"), t("patient-profile.directions"), t("patient-profile.dispensedOn")].map((heading) => (
                   <th className="px-3 py-3" key={heading}>{heading}</th>
                 ))}
               </tr>

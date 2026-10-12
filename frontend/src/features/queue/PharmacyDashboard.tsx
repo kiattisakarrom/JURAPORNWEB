@@ -1,11 +1,13 @@
 "use client";
 
+import { frontendErrorMessage, uiMessage, type TranslationKey, useTranslation, Message } from "@/i18n";
+
 import { useRealtimeQueue } from "@/hooks/useRealtimeQueue";
 import { mapVerifyPatientsToQueue } from "@/lib/verify-prescriptions-adapter";
 import { AlertTriangle, BarChart3, ChevronLeft, ChevronRight, ClipboardCheck, Database, FileWarning, PackageCheck, Pill, RefreshCw, ScanBarcode } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { uiToast as toast } from "@/i18n/toast";
 import { Button } from "@/components/ui/button";
 import { OperationsDashboard } from "@/features/dashboard/OperationsDashboard";
 import { DispensingQueueScreen, hasDispensingChannelClaim } from "@/features/dispensing/DispensingQueueScreen";
@@ -52,25 +54,25 @@ import { MobileQueueList } from "./MobileQueueList";
 import { QueueTable } from "./QueueTable";
 
 const workspaceItems: WorkspaceNavItem[] = [
-  { id: "verify", label: "Verify", subtitle: "Verify Workstation", icon: ClipboardCheck },
-  { id: "matching", label: "Matching", subtitle: "Matching Workstation", icon: ScanBarcode },
-  { id: "checking", label: "Checking", subtitle: "Checking Workstation", icon: PackageCheck },
-  { id: "dispensing", label: "จ่ายยา", subtitle: "Dispensing & Queue", icon: Pill },
-  { id: "dashboard", label: "Dashboard", subtitle: "Operations Dashboard", icon: BarChart3 },
-  { id: "me", label: "ME Report", subtitle: "Medication Error Report", icon: FileWarning },
-  { id: "drugmaster", label: "Drug Master", subtitle: "Drug Master & Label", icon: Database },
+  { id: "verify", label: "common.verify", subtitle: "queue.verifyWorkstation", icon: ClipboardCheck },
+  { id: "matching", label: "common.matching", subtitle: "queue.matchingWorkstation", icon: ScanBarcode },
+  { id: "checking", label: "common.checking", subtitle: "queue.checkingWorkstation", icon: PackageCheck },
+  { id: "dispensing", label: "queue.dispensing", subtitle: "queue.dispensingQueue", icon: Pill },
+  { id: "dashboard", label: "queue.dashboard", subtitle: "queue.operationsDashboard", icon: BarChart3 },
+  { id: "me", label: "queue.meReport", subtitle: "queue.medicationErrorReport", icon: FileWarning },
+  { id: "drugmaster", label: "queue.drugMaster", subtitle: "queue.drugMasterLabels", icon: Database },
 ];
 
 const tabs: { id: QueueStage; label: string }[] = [
-  { id: "all", label: "ทั้งหมด" },
-  { id: "verify", label: "Verify" },
-  { id: "picking", label: "Picking" },
-  { id: "matching", label: "Matching" },
-  { id: "checking", label: "Checking" },
-  { id: "dispensing", label: "Dispensing" },
-  { id: "pending", label: "Pending" },
-  { id: "complete", label: "Complete" },
-  { id: "missed-call", label: "Missed-call" },
+  { id: "all", label: "common.all" },
+  { id: "verify", label: "common.verify" },
+  { id: "picking", label: "queue.picking" },
+  { id: "matching", label: "common.matching" },
+  { id: "checking", label: "common.checking" },
+  { id: "dispensing", label: "common.dispensing" },
+  { id: "pending", label: "common.pending" },
+  { id: "complete", label: "queue.complete" },
+  { id: "missed-call", label: "common.missedCall" },
 ];
 
 function useLiveClock() {
@@ -93,6 +95,7 @@ function useLiveClock() {
 }
 
 export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -227,11 +230,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           if (error instanceof ApiClientError && [403,404,409].includes(error.status)) {
             setSelectedVerifyAccess((current) => current?.workflowId === workflowId && current.lockToken === lockToken
               ? { ...current, lockToken: null, isReadOnly: true } : current);
-            toast.error(`เสียสิทธิ์ล็อก Verify: ${readQueryError(error)}`);
+            toast.error(uiMessage("queue.verifyLockLost", { p0: readQueryError(error) }));
           } else {
             // A network failure is not evidence that the server released the lease.
             // Keep unsaved text; the sync connection/expiry gates further actions.
-            toast.error("ต่ออายุล็อกไม่สำเร็จ กำลังตรวจการเชื่อมต่อ");
+            toast.error(uiMessage("queue.unableToRenewLockCheckingConnection"));
             void syncRealtime();
           }
         });
@@ -299,10 +302,10 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   function selectQueueItem(id: string, prescriptionId?: string, source: "ui" | "url" = "ui") {
     const candidate = patients.find(patient => patient.id === id);
     if (candidate?.stage === "verify" && !realtime.connected) {
-      toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุดก่อนเปิด Verify"); return;
+      toast.error(uiMessage("queue.disconnectedWaitForCurrentDataBeforeOpening")); return;
     }
     if (candidate?.stage === "verify" && candidate.verifyLock?.isLocked && candidate.verifyLock.sessionId !== getVerifySessionId()) {
-      toast.error(`VN นี้กำลังใช้งานโดย ${candidate.verifyLock.ownerName ?? "ผู้ใช้อื่น"}`); return;
+      toast.error(uiMessage("queue.thisVnIsBeingUsedBy", { p0: candidate.verifyLock.ownerName ?? uiMessage("common.anotherUser") })); return;
     }
     const canReuseVerifyAccess = selectedPatient?.id === id && Boolean(selectedVerifyAccess?.lockToken) && verifyLeaseValid;
     const canOpenPopup = candidate?.stage === "verify" || Boolean(candidate && isPackagePopupStage(candidate.stage));
@@ -465,13 +468,13 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       setSelectedPrescriptionId(null);
       suppressMissingPopupRef.current = false;
       if (source === "url") replaceWithoutPopup();
-      toast.error(`เปิด PatientPanel ไม่สำเร็จ: ${readQueryError(error)}`);
+      toast.error(uiMessage("queue.unableToOpenPatientpanel", { p0: readQueryError(error) }));
     }
   }
 
   async function verifySelectedPrescription(input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) {
-    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุดก่อน Verify"); return; }
-    if (!verifyLeaseValid || verifySourceChanged) { toast.error("ข้อมูลหรือสิทธิ์ล็อกเปลี่ยนแล้ว กรุณาปิดและเปิด PN เพื่อตรวจใหม่"); return; }
+    if (!realtime.connected) { toast.error(uiMessage("queue.disconnectedWaitForCurrentDataBeforeVerify")); return; }
+    if (!verifyLeaseValid || verifySourceChanged) { toast.error(uiMessage("queue.dataOrLockAccessChangedCloseAnd")); return; }
     if (!selectedPrescription || !selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken) return;
     const patient = selectedPatientForPanel;
     if (!patient?.date) return;
@@ -494,9 +497,9 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       });
       await refreshPackageData();
       if (result.PACKAGE_CREATED) {
-        toast.success(`${input.mode === "URGENT" ? "สร้างแพ็กเกจยาด่วน" : "Verify ครบและส่งไป Picking"} แล้ว`);
+        toast.success(uiMessage("queue.completed", { p0: input.mode === "URGENT" ? uiMessage("queue.urgentPackageCreated") : uiMessage("queue.verifyCompletedAndSentToPicking") }));
       } else {
-        toast.success(`PN ${selectedPrescription.pn} Verify แล้ว รออีก ${result.WAITING_PRESCRIPTIONS.length} PN`);
+        toast.success(uiMessage("queue.pnVerifiedAwaitingMorePn", { p0: selectedPrescription.pn, p1: result.WAITING_PRESCRIPTIONS.length }));
       }
       closeSelectedPanel();
     } catch (error) {
@@ -508,10 +511,10 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   async function saveSelectedVerifyNote(note: string) {
     const access = selectedVerifyAccess;
     if (!access?.workflowId || !access.lockToken || access.datasetId !== realtime.datasetId) {
-      throw new ApiClientError("สิทธิ์ล็อก Verify เปลี่ยนแล้ว", 409);
+      throw Object.assign(new ApiClientError("สิทธิ์ล็อก Verify เปลี่ยนแล้ว", 409), { uiMessage: uiMessage("verify.lockPermissionChanged") });
     }
     if (!realtime.connected || !verifyLeaseValid) {
-      throw new ApiClientError("ขาดการเชื่อมต่อหรือสิทธิ์ล็อก Verify หมดอายุ", 409);
+      throw Object.assign(new ApiClientError("ขาดการเชื่อมต่อหรือสิทธิ์ล็อก Verify หมดอายุ", 409), { uiMessage: uiMessage("verify.connectionOrLockExpired") });
     }
     return saveVerifyNote(access.workflowId, {
       lockToken: access.lockToken,
@@ -538,11 +541,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function runSendMatching(patient: PatientQueueItem) {
-    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!realtime.connected) { toast.error(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     try {
       if (patient.stage !== "picking" || !patient.packageId) return;
       await transitionPackage(patient.packageId, "SEND_TO_MATCHING");
-      toast.success(`VN ${patient.vn} ส่งไป Matching แล้ว (MVP ข้ามการรอ Location)`);
+      toast.success(uiMessage("queue.vnSentToMatchingMvpSkipsLocation", { p0: patient.vn }));
       await refreshPackageData();
     } catch (error) {
       toast.error(readQueryError(error));
@@ -550,11 +553,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   }
 
   async function runPendingAction(patient: PatientQueueItem) {
-    if (!realtime.connected) { toast.error("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!realtime.connected) { toast.error(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     try {
       if (patient.stage === "pending" && patient.workflowId) {
         await returnPackageWorkflowToVerify(patient.workflowId, "Pharmacist");
-        toast.success(`VN ${patient.vn} กลับหน้า Verify แล้ว`);
+        toast.success(uiMessage("queue.vnReturnedToVerify", { p0: patient.vn }));
       } else if (patient.stage === "verify" && patient.date) {
         await setPackageWorkflowPending({
           visitDate: patient.date.slice(0, 10),
@@ -562,7 +565,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           reasonText: "ส่ง Pending จากคิว Verify",
           actorName: "Pharmacist",
         });
-        toast.success(`VN ${patient.vn} ส่งไป Pending แล้ว`);
+        toast.success(uiMessage("queue.vnSentToPending", { p0: patient.vn }));
       }
       await refreshPackageData();
     } catch (error) {
@@ -625,7 +628,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       if (selectedStageAtOpenRef.current && selectedPatient?.stage !== selectedStageAtOpenRef.current) {
         if (invalidPopupRef.current !== popupKey) {
           invalidPopupRef.current = popupKey;
-          toast.info(`VN ${selectedPatient?.vn ?? "นี้"} ถูกส่งไปขั้น ${selectedPatient?.stage ?? "ถัดไป"} แล้ว`);
+          toast.info(uiMessage("queue.vnMovedToStage", { p0: selectedPatient?.vn ?? uiMessage("queue.this"), p1: selectedPatient?.stage ?? uiMessage("common.next") }));
           closeSelectedItem();
           replaceWithoutPopup();
         }
@@ -639,7 +642,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     if (candidate?.stage === "verify" && candidate.verifyLock?.isLocked && candidate.verifyLock.sessionId !== getVerifySessionId()) {
       if (invalidPopupRef.current !== popupKey) {
         invalidPopupRef.current = popupKey;
-        toast.error(`VN นี้กำลังใช้งานโดย ${candidate.verifyLock.ownerName ?? "ผู้ใช้อื่น"}`);
+        toast.error(uiMessage("queue.thisVnIsBeingUsedBy", { p0: candidate.verifyLock.ownerName ?? uiMessage("common.anotherUser") }));
         closeSelectedItem();
         replaceWithoutPopup();
       }
@@ -650,7 +653,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
       if (realtime.loading || realtime.backgroundStatus === "loading") return;
       if (invalidPopupRef.current !== popupKey) {
         invalidPopupRef.current = popupKey;
-        toast.error("ไม่พบ Workflow, Package หรือ PN ที่ระบุ หรือรายการถูกส่งต่อแล้ว");
+        toast.error(uiMessage("queue.workflowPackageOrPnNotFoundOr"));
         closeSelectedItem();
         replaceWithoutPopup();
       }
@@ -697,16 +700,16 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
           search={search}
           summary={summary}
           onDateRangeChange={updateDateRange}
-          onLogout={() => { if (hasDispensingChannelClaim()) { toast.error("กรุณากดปล่อยช่องจ่ายยาก่อนออกจากระบบ"); selectScreen("dispensing"); return; } closeSelectedItem(); onLogout(); }}
+          onLogout={() => { if (hasDispensingChannelClaim()) { toast.error(uiMessage("queue.releaseTheDispensingStationBeforeSigningOut")); selectScreen("dispensing"); return; } closeSelectedItem(); onLogout(); }}
           onSearch={updateSearch}
         />
 
         <div aria-live="polite" className={cn("flex shrink-0 flex-wrap items-center justify-between gap-2 border-b px-5 py-1.5 text-xs font-semibold", realtime.connected ? "border-slate-100 bg-white text-slate-500" : "border-amber-200 bg-amber-50 text-amber-800")}>
-          <span>{realtime.loading ? "กำลังโหลดข้อมูล..." : realtime.connected ? "เชื่อมต่อแล้ว · อัปเดตเฉพาะรายการที่เปลี่ยน" : "ขาดการเชื่อมต่อ — ข้อมูลอาจไม่ล่าสุด"}{!realtime.loading && realtime.backgroundStatus === "loading" ? ` · กำลังโหลดเบื้องหลัง (${verifyQueue.totalVisits} VN)` : ""}{realtime.backgroundStatus === "error" ? " · โหลดเบื้องหลังไม่สำเร็จ กรุณาลองใหม่" : ""}</span>
-          <button className="text-blue-600 underline" onClick={() => void realtime.reload()} type="button">รีเฟรชข้อมูลทั้งหมด</button>
+          <span>{realtime.loading ? t("common.loadingData") : realtime.connected ? t("queue.connectedUpdatingChangedRecordsOnly") : t("queue.disconnectedDataMayBeOutdated")}{!realtime.loading && realtime.backgroundStatus === "loading" ? t("queue.loadingInBackgroundVn", { p0: verifyQueue.totalVisits }) : ""}{realtime.backgroundStatus === "error" ? t("queue.backgroundLoadFailedTryAgain") : ""}</span>
+          <button className="text-blue-600 underline" onClick={() => void realtime.reload()} type="button">{t("queue.refreshAllData")}</button>
         </div>
-        {verifyLeaseLost ? <div role="alert" className="bg-amber-50 px-5 py-2 text-sm text-amber-800">ล็อก Verify ถูกปล่อยหรือหมดอายุแล้ว กรุณาเลือก PN เพื่อขอล็อกใหม่</div> : null}
-        {selectedId && !selectedPatient && !realtime.loading ? <div role="status" className="bg-blue-50 px-5 py-2 text-sm text-blue-800">รายการที่เลือกถูกส่งต่อหรือไม่อยู่ในคิวนี้แล้ว</div> : null}
+        {verifyLeaseLost ? <div role="alert" className="bg-amber-50 px-5 py-2 text-sm text-amber-800">{t("queue.verifyLockReleasedOrExpiredSelectA")}</div> : null}
+        {selectedId && !selectedPatient && !realtime.loading ? <div role="status" className="bg-blue-50 px-5 py-2 text-sm text-blue-800">{t("queue.selectedRecordHasBeenForwardedOrIs")}</div> : null}
 
         <div className="min-h-0 flex-1 overflow-hidden">
           {activeScreen === "verify" ? (
@@ -723,7 +726,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                       onClick={() => selectTab(tab.id)}
                       type="button"
                     >
-                      {tab.label}
+                      {t(tab.label as TranslationKey)}
                       <span className={cn("ml-2 inline-flex h-5 min-w-5 items-center justify-center rounded-[7px] px-1.5 text-[11.5px] font-bold", activeTab === tab.id ? "bg-[#e7efff] text-[#2f6bf3]" : "bg-[#eef1f5] text-[#8a97a8]")}>{summary[tab.id]}{tab.id === "verify" ? " PN" : ""}</span>
                       {activeTab === tab.id ? <span className="absolute bottom-[-1px] left-2 right-2 h-[2.5px] rounded-t-full bg-[#2f6bf3]" /> : null}
                     </button>
@@ -819,11 +822,11 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
               isConnected: realtime.connected,
               isReadOnly:selectedVerifyAccess.isReadOnly || !selectedVerifyAccess.lockToken || !verifyLeaseValid || !realtime.connected || verifySourceChanged,
               blockedReason: !realtime.connected
-                ? "ขาดการเชื่อมต่อ — หยุดทำรายการชั่วคราวจนกว่าจะได้รับข้อมูลล่าสุด"
+                ? t("queue.disconnectedActionsPausedUntilCurrentDataArrives")
                 : verifySourceChanged
-                  ? "ข้อมูลใบยาหรือคำเตือนเปลี่ยนแล้ว กรุณาปิดและเปิด PN เพื่อตรวจข้อมูลล่าสุดก่อน Verify"
+                  ? t("queue.prescriptionOrAlertsChangedCloseAndReopen")
                   : !selectedVerifyAccess.lockToken || !verifyLeaseValid
-                    ? "สิทธิ์ล็อก Verify ถูกปล่อยหรือหมดอายุแล้ว NOTE ที่ยังไม่บันทึกจะคงอยู่จนกว่าจะปิด Panel"
+                    ? t("queue.verifyLockReleasedOrExpiredUnsavedNotes")
                     : undefined}}
             onClose={closeSelectedPanel}
             navigationCloseRequest={patientPanelCloseRequest}
@@ -855,33 +858,33 @@ function VerifyPagination({
   onPageChange: (page: number) => void;
   onRetryBackground: () => void;
 }) {
+  const { t } = useTranslation();
   const firstItem = (page - 1) * VERIFY_VISITS_PER_PAGE + 1;
   const lastItem = Math.min(page * VERIFY_VISITS_PER_PAGE, totalItems);
 
   return (
     <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6">
       <div className="font-bold text-slate-500">
-        แสดง VN {firstItem}–{lastItem}
-        {backgroundStatus === "complete" ? <> จาก {totalItems} VN</> : null}
+        {t("queue.showingVn")}{firstItem}–{lastItem}
+        {backgroundStatus === "complete" ? <>  {t("queue.of")} {totalItems}  {t("common.vn")}</> : null}
         {backgroundStatus === "loading" ? (
-          <span className="ml-2 text-blue-600">กำลังโหลดข้อมูลเบื้องหลัง…</span>
+          <span className="ml-2 text-blue-600">{t("queue.loadingInBackground")}</span>
         ) : null}
         {backgroundStatus === "complete" ? (
-          <span className="ml-2 text-emerald-600">โหลดข้อมูลเบื้องหลังเสร็จแล้ว</span>
+          <span className="ml-2 text-emerald-600">{t("queue.backgroundLoadingComplete")}</span>
         ) : null}
         {backgroundStatus === "error" ? (
           <button className="ml-2 font-black text-rose-600 underline underline-offset-2" onClick={onRetryBackground} type="button">
-            โหลดข้อมูลเบื้องหลังไม่สำเร็จ · ลองใหม่
-          </button>
+            {t("queue.backgroundLoadFailedRetry")}</button>
         ) : null}
-        {isFetching ? <span className="ml-2 text-blue-600">กำลังอัปเดตเฉพาะข้อมูลที่เปลี่ยน...</span> : null}
+        {isFetching ? <span className="ml-2 text-blue-600">{t("queue.updatingChangedRecords")}</span> : null}
       </div>
       <div className="flex items-center gap-2">
-        <Button aria-label="หน้าก่อนหน้า" className="h-9 w-9 rounded-xl" disabled={page <= 1} onClick={() => onPageChange(page - 1)} size="icon" variant="outline">
+        <Button aria-label={t("queue.previousPage")} className="h-9 w-9 rounded-xl" disabled={page <= 1} onClick={() => onPageChange(page - 1)} size="icon" variant="outline">
           <ChevronLeft className="h-4 w-4" />
         </Button>
-        <span className="min-w-24 text-center font-mono text-sm font-black text-slate-700">หน้า {page}/{totalPages}</span>
-        <Button aria-label="หน้าถัดไป" className="h-9 w-9 rounded-xl" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} size="icon" variant="outline">
+        <span className="min-w-24 text-center font-mono text-sm font-black text-slate-700">{t("common.page")} {page}/{totalPages}</span>
+        <Button aria-label={t("queue.nextPage")} className="h-9 w-9 rounded-xl" disabled={page >= totalPages} onClick={() => onPageChange(page + 1)} size="icon" variant="outline">
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -890,24 +893,24 @@ function VerifyPagination({
 }
 
 function VerifyApiErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-0 flex-1 items-center justify-center p-6">
       <div className="w-full max-w-xl rounded-2xl border border-rose-200 bg-rose-50 p-6 text-center shadow-sm">
         <AlertTriangle className="mx-auto h-9 w-9 text-rose-600" />
-        <h2 className="mt-3 text-lg font-black text-rose-900">โหลดข้อมูล Verify prescriptions ไม่สำเร็จ</h2>
-        <p className="mt-2 text-sm font-semibold leading-6 text-rose-700">{readQueryError(error)}</p>
-        <p className="mt-1 text-xs font-bold text-rose-500">ตรวจสอบว่า Backend พอร์ต 3001 ทำงานอยู่บนเครื่อง Server และ Frontend เชื่อมต่อ proxy ได้</p>
+        <h2 className="mt-3 text-lg font-black text-rose-900">{t("queue.unableToLoadVerifyPrescriptions")}</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-rose-700"><Message value={readQueryError(error)} /></p>
+        <p className="mt-1 text-xs font-bold text-rose-500">{t("queue.checkThatBackendOnPort3001Is")}</p>
         <Button className="mt-5 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={onRetry}>
           <RefreshCw className="h-4 w-4" />
-          ลองใหม่
-        </Button>
+          {t("common.retry")}</Button>
       </div>
     </div>
   );
 }
 
 function readQueryError(error: unknown) {
-  return error instanceof Error ? error.message : "เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ";
+  return frontendErrorMessage(error, uiMessage("queue.anUnknownErrorOccurred"));
 }
 
 function isPackagePopupStage(stage: PatientQueueItem["stage"]) {

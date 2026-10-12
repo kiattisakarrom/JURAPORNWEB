@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, PackageCheck, Siren, Sparkles } from "lucide-react";
+import type { TranslationKey, Translator } from "@/i18n/messages";
 import type { AlertKind, PatientQueueItem, Priority } from "@/types/pharmacy";
 
 export const alertStyles: Record<AlertKind, string> = {
@@ -40,9 +41,20 @@ export const stageDotStyles: Record<PatientQueueItem["stage"], string> = {
   "missed-call": "bg-[#d83a3a]",
 };
 
-export function stageLabel(stage: PatientQueueItem["stage"]) {
-  if (stage === "missed-call") return "Missed-call";
-  return stage.charAt(0).toUpperCase() + stage.slice(1);
+// UI labels for known workflow stages; the stage values and API data stay raw.
+const stageKeys = {
+  verify: "common.verify",
+  picking: "queue.picking",
+  matching: "common.matching",
+  checking: "common.checking",
+  dispensing: "common.dispensing",
+  pending: "common.pending",
+  complete: "queue.complete",
+  "missed-call": "common.missedCall",
+} satisfies Record<PatientQueueItem["stage"], TranslationKey>;
+
+export function stageLabel(stage: PatientQueueItem["stage"], t: Translator) {
+  return t(stageKeys[stage]);
 }
 
 export function durationClass(minutes?: number) {

@@ -1,5 +1,9 @@
 "use client";
 
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+
+import { frontendErrorMessage, uiMessage, type Translator, useTranslation } from "@/i18n";
+
 import {
   AlertTriangle,
   CheckCircle2,
@@ -12,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { uiToast as toast } from "@/i18n/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiClientError } from "@/lib/api-client";
@@ -45,6 +49,7 @@ const severitySuggestions = ["Mild", "Moderate", "Severe"];
 const correlationSuggestions = ["Certain", "Probable", "Possible", "Unlikely"];
 
 export function DrugAllergyManager() {
+  const { t } = useTranslation();
   const historyRequestRef = useRef(0);
   const [patientQuery, setPatientQuery] = useState("");
   const [patientResults, setPatientResults] = useState<DrugAllergyPatient[]>([]);
@@ -112,7 +117,7 @@ export function DrugAllergyManager() {
     try {
       const result = await searchDrugAllergyPatients(query);
       setPatientResults(result);
-      if (result.length === 0) toast.info("ไม่พบผู้ป่วยจากคำค้นนี้");
+      if (result.length === 0) toast.info(uiMessage("drug-master.noPatientsMatchThisSearch"));
     } catch (reason) {
       toast.error(readError(reason));
     } finally {
@@ -128,7 +133,7 @@ export function DrugAllergyManager() {
     try {
       const result = await searchDrugAllergyMedicines(query);
       setMedicineResults(result);
-      if (result.length === 0) toast.info("ไม่พบยาจากคำค้นนี้");
+      if (result.length === 0) toast.info(uiMessage("drug-master.noMedicationsMatchThisSearch"));
     } catch (reason) {
       toast.error(readError(reason));
     } finally {
@@ -139,7 +144,7 @@ export function DrugAllergyManager() {
   function requestConfirmation(event: FormEvent) {
     event.preventDefault();
     if (!canSubmit) {
-      toast.error("กรุณากรอกข้อมูลที่จำเป็นให้ครบและเลือกผู้ป่วยกับยาจากผลการค้นหา");
+      toast.error(uiMessage("drug-master.completeRequiredFieldsAndSelectAPatient"));
       return;
     }
     setConfirming(true);
@@ -161,7 +166,7 @@ export function DrugAllergyManager() {
       setMedicineResults([]);
       setForm(emptyForm);
       setConfirming(false);
-      toast.success("บันทึกข้อมูลแพ้ยาแล้ว คำเตือน AI จะอัปเดตผ่านระบบ Realtime");
+      toast.success(uiMessage("drug-master.allergySavedAiAlertsWillUpdateThrough"));
     } catch (reason) {
       toast.error(readError(reason));
     } finally {
@@ -176,18 +181,17 @@ export function DrugAllergyManager() {
           <div className="flex items-start gap-3">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-600"><ShieldAlert className="h-5 w-5" /></span>
             <div>
-              <h1 className="text-xl font-black text-slate-950">เพิ่มข้อมูลแพ้ยาผู้ป่วย</h1>
-              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">ข้อมูลจะบันทึกลงทะเบียนแพ้ยาและแสดง AI เมื่อผู้ป่วยได้รับยารหัสเดียวกัน</p>
+              <h1 className="text-xl font-black text-slate-950">{t("drug-master.addPatientDrugAllergy")}</h1>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{t("drug-master.theAllergyWillBeRegisteredAndAn")}</p>
             </div>
           </div>
 
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <FieldTitle required>ค้นหาผู้ป่วย</FieldTitle>
+            <FieldTitle required>{t("drug-master.findPatient")}</FieldTitle>
             <form className="mt-2 flex gap-2" onSubmit={findPatients}>
-              <Input maxLength={100} onChange={(event) => { setPatientQuery(event.target.value); if (selectedPatient) clearSelectedPatient(); }} placeholder="กรอก HN หรือชื่อผู้ป่วย" value={patientQuery} />
+              <Input maxLength={100} onChange={(event) => { setPatientQuery(event.target.value); if (selectedPatient) clearSelectedPatient(); }} placeholder={t("drug-master.enterHnOrPatientName")} value={selectedPatient && !selectedPatient.FULLNAME_TH ? `${selectedPatient.PATIENTID} — ${t("drug-master.nameUnspecified")}` : patientQuery} />
               <Button disabled={patientSearching || !patientQuery.trim()} type="submit">
-                {patientSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}ค้นหา
-              </Button>
+                {patientSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{t("common.search")}</Button>
             </form>
             {patientResults.length > 0 ? (
               <div className="mt-3 max-h-52 space-y-2 overflow-y-auto">
@@ -198,7 +202,7 @@ export function DrugAllergyManager() {
                     onClick={() => void selectPatient(patient)}
                     type="button"
                   >
-                    <span><span className="block text-sm font-black text-slate-900">{patient.FULLNAME_TH ?? "ไม่ระบุชื่อผู้ป่วย"}</span><span className="mt-0.5 block font-mono text-xs font-bold text-slate-500">HN {patient.PATIENTID}</span></span>
+                    <span><span className="block text-sm font-black text-slate-900">{patient.FULLNAME_TH ?? t("common.patientNameUnspecified")}</span><span className="mt-0.5 block font-mono text-xs font-bold text-slate-500">{t("common.hn")} {patient.PATIENTID}</span></span>
                     <CheckCircle2 className="h-5 w-5 text-blue-600" />
                   </button>
                 ))}
@@ -207,88 +211,88 @@ export function DrugAllergyManager() {
             {selectedPatient ? (
               <div className="mt-3 flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                 <UserRound className="h-5 w-5 text-blue-600" />
-                <div className="min-w-0 flex-1"><div className="truncate font-black text-slate-900">{selectedPatient.FULLNAME_TH ?? "ไม่ระบุชื่อผู้ป่วย"}</div><div className="font-mono text-xs font-bold text-blue-700">HN {selectedPatient.PATIENTID}</div></div>
-                <button aria-label="เปลี่ยนผู้ป่วย" className="rounded-lg p-1.5 text-slate-500 hover:bg-white" onClick={() => { clearSelectedPatient(); setPatientQuery(""); }} type="button"><X className="h-4 w-4" /></button>
+                <div className="min-w-0 flex-1"><div className="truncate font-black text-slate-900">{selectedPatient.FULLNAME_TH ?? t("common.patientNameUnspecified")}</div><div className="font-mono text-xs font-bold text-blue-700">{t("common.hn")} {selectedPatient.PATIENTID}</div></div>
+                <button aria-label={t("drug-master.changePatient")} className="rounded-lg p-1.5 text-slate-500 hover:bg-white" onClick={() => { clearSelectedPatient(); setPatientQuery(""); }} type="button"><X className="h-4 w-4" /></button>
               </div>
             ) : null}
           </div>
 
           <form className="mt-5 space-y-5" onSubmit={requestConfirmation}>
             <div>
-              <FieldTitle required>ยาที่ผู้ป่วยแพ้</FieldTitle>
+              <FieldTitle required>{t("drug-master.allergicMedication")}</FieldTitle>
               <div className="mt-2 flex gap-2">
-                <Input disabled={!selectedPatient} maxLength={100} onChange={(event) => { setMedicineQuery(event.target.value); setSelectedMedicine(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findMedicines(); } }} placeholder="ค้นหารหัสยา ชื่อการค้า หรือชื่อสามัญ" value={medicineQuery} />
+                <Input disabled={!selectedPatient} maxLength={100} onChange={(event) => { setMedicineQuery(event.target.value); setSelectedMedicine(null); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void findMedicines(); } }} placeholder={t("drug-master.searchDrugCodeBrandOrGenericName")} value={medicineQuery} />
                 <Button disabled={!selectedPatient || medicineSearching || !medicineQuery.trim()} onClick={() => void findMedicines()} type="button" variant="outline">
-                  {medicineSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}ค้นยา
-                </Button>
+                  {medicineSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}{t("drug-master.findMedication")}</Button>
               </div>
               {medicineResults.length > 0 ? (
                 <div className="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
                   {medicineResults.map((medicine) => (
-                    <button className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50" key={medicine.MEDICINECODE} onClick={() => { setSelectedMedicine(medicine); setMedicineQuery(medicineLabel(medicine)); setMedicineResults([]); }} type="button">
+                    <button className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left hover:border-blue-400 hover:bg-blue-50" key={medicine.MEDICINECODE} onClick={() => { setSelectedMedicine(medicine); setMedicineQuery(medicineLabel(medicine, t)); setMedicineResults([]); }} type="button">
                       <span className="block text-sm font-black text-slate-900">{medicine.COMMERCIALNAME || medicine.LOCALNAME || medicine.GENERICNAME || medicine.MEDICINECODE}</span>
                       <span className="mt-1 block font-mono text-xs font-bold text-slate-500">{medicine.MEDICINECODE}{medicine.STRENGTH ? ` · ${medicine.STRENGTH}` : ""}</span>
                     </button>
                   ))}
                 </div>
               ) : null}
-              {selectedMedicine ? <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">เลือกแล้ว: {medicineLabel(selectedMedicine)}</div> : null}
+              {selectedMedicine ? <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800">{t("drug-master.selected")} {medicineLabel(selectedMedicine, t)}</div> : null}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <FormField label="อาการแพ้ / Side effect" required><textarea maxLength={1000} onChange={(event) => updateForm(setForm, "sideEffect", event.target.value)} placeholder="เช่น ผื่นคัน หายใจติดขัด" value={form.sideEffect} /></FormField>
-              <FormField label="ประเภทการแพ้" required><Input list="allergy-types" maxLength={100} onChange={(event) => updateForm(setForm, "allergyType", event.target.value)} value={form.allergyType} /><datalist id="allergy-types"><option value="Drug Allergy" /><option value="Drug Intolerance" /></datalist></FormField>
-              <FormField label="ความรุนแรง" required><Input list="allergy-severity" maxLength={100} onChange={(event) => updateForm(setForm, "severity", event.target.value)} placeholder="เลือกหรือกรอกระดับความรุนแรง" value={form.severity} /><datalist id="allergy-severity">{severitySuggestions.map((item) => <option key={item} value={item} />)}</datalist></FormField>
-              <FormField label="Correlation level" required><Input list="allergy-correlation" maxLength={100} onChange={(event) => updateForm(setForm, "correlationLevel", event.target.value)} placeholder="เลือกหรือกรอกความสัมพันธ์" value={form.correlationLevel} /><datalist id="allergy-correlation">{correlationSuggestions.map((item) => <option key={item} value={item} />)}</datalist></FormField>
-              <FormField label="รายละเอียดอาการ (ไทย)"><textarea maxLength={2000} onChange={(event) => updateForm(setForm, "adverseReactionLocal", event.target.value)} value={form.adverseReactionLocal} /></FormField>
-              <FormField label="รายละเอียดอาการ (English)"><textarea maxLength={2000} onChange={(event) => updateForm(setForm, "adverseReactionEnglish", event.target.value)} value={form.adverseReactionEnglish} /></FormField>
-              <FormField label="ผู้รับรองข้อมูล" required><Input maxLength={150} onChange={(event) => updateForm(setForm, "certifiedBy", event.target.value)} placeholder="ชื่อเภสัชกรหรือผู้บันทึก" value={form.certifiedBy} /></FormField>
-              <FormField label="หมายเหตุ"><textarea maxLength={4000} onChange={(event) => updateForm(setForm, "remarks", event.target.value)} value={form.remarks} /></FormField>
+              <FormField label={t("drug-master.allergicSymptomsSideEffect")} required><textarea maxLength={1000} onChange={(event) => updateForm(setForm, "sideEffect", event.target.value)} placeholder={t("drug-master.forExampleItchyRashOrBreathingDifficulty")} value={form.sideEffect} /></FormField>
+              <FormField label={t("drug-master.allergyType")} required><Input list="allergy-types" maxLength={100} onChange={(event) => updateForm(setForm, "allergyType", event.target.value)} value={form.allergyType} /><datalist id="allergy-types"><option value="Drug Allergy" /><option value="Drug Intolerance" /></datalist></FormField>
+              <FormField label={t("common.severity")} required><Input list="allergy-severity" maxLength={100} onChange={(event) => updateForm(setForm, "severity", event.target.value)} placeholder={t("drug-master.selectOrEnterSeverity")} value={form.severity} /><datalist id="allergy-severity">{severitySuggestions.map((item) => <option key={item} value={item} />)}</datalist></FormField>
+              <FormField label={t("drug-master.correlationLevel")} required><Input list="allergy-correlation" maxLength={100} onChange={(event) => updateForm(setForm, "correlationLevel", event.target.value)} placeholder={t("drug-master.selectOrEnterCorrelation")} value={form.correlationLevel} /><datalist id="allergy-correlation">{correlationSuggestions.map((item) => <option key={item} value={item} />)}</datalist></FormField>
+              <FormField label={t("drug-master.reactionDetailsThai")}><textarea maxLength={2000} onChange={(event) => updateForm(setForm, "adverseReactionLocal", event.target.value)} value={form.adverseReactionLocal} /></FormField>
+              <FormField label={t("drug-master.reactionDetailsEnglish")}><textarea maxLength={2000} onChange={(event) => updateForm(setForm, "adverseReactionEnglish", event.target.value)} value={form.adverseReactionEnglish} /></FormField>
+              <FormField label={t("drug-master.certifiedBy")} required><Input maxLength={150} onChange={(event) => updateForm(setForm, "certifiedBy", event.target.value)} placeholder={t("drug-master.pharmacistOrRecorderName")} value={form.certifiedBy} /></FormField>
+              <FormField label={t("common.notes")}><textarea maxLength={4000} onChange={(event) => updateForm(setForm, "remarks", event.target.value)} value={form.remarks} /></FormField>
             </div>
 
             <div className="flex justify-end border-t border-slate-200 pt-5">
-              <Button className="h-11 px-5" disabled={!canSubmit || saving} type="submit"><ClipboardPlus className="h-4 w-4" />ตรวจสอบก่อนบันทึก</Button>
+              <Button className="h-11 px-5" disabled={!canSubmit || saving} type="submit"><ClipboardPlus className="h-4 w-4" />{t("drug-master.reviewBeforeSaving")}</Button>
             </div>
           </form>
         </section>
 
         <section className="min-h-[360px] rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><History className="h-5 w-5" /></span><div><h2 className="font-black text-slate-950">ประวัติแพ้ยา</h2><p className="text-xs font-semibold text-slate-500">อ่านอย่างเดียว ไม่แก้ไขหรือลบข้อมูลเดิม</p></div></div>
-          {!selectedPatient ? <EmptyHistory text="เลือกผู้ป่วยเพื่อดูประวัติแพ้ยา" /> : historyLoading ? <div className="flex min-h-64 items-center justify-center gap-2 font-bold text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />กำลังโหลดประวัติ...</div> : history?.ITEMS.length ? (
+          <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-50 text-blue-600"><History className="h-5 w-5" /></span><div><h2 className="font-black text-slate-950">{t("common.drugAllergyHistory")}</h2><p className="text-xs font-semibold text-slate-500">{t("drug-master.readOnlyExistingRecordsCannotBeEdited")}</p></div></div>
+          {!selectedPatient ? <EmptyHistory text={t("drug-master.selectAPatientToViewAllergyHistory")} /> : historyLoading ? <div className="flex min-h-64 items-center justify-center gap-2 font-bold text-slate-500"><Loader2 className="h-5 w-5 animate-spin" />{t("drug-master.loadingHistory")}</div> : history?.ITEMS.length ? (
             <div className="mt-5 space-y-3">
               {history.ITEMS.map((item, index) => (
                 <article className="rounded-2xl border border-red-100 bg-red-50/40 p-4" key={`${item.RECORD_KEY}-${index}`}>
-                  <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="font-black text-slate-950">{item.COMMERCIALNAME || item.GENERICNAME || item.MEDICINECODE}</div><div className="mt-1 font-mono text-xs font-bold text-slate-500">{item.MEDICINECODE}</div></div><span className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-black text-red-700">AI</span></div>
+                  <div className="flex flex-wrap items-start justify-between gap-2"><div><div className="font-black text-slate-950">{item.COMMERCIALNAME || item.GENERICNAME || item.MEDICINECODE}</div><div className="mt-1 font-mono text-xs font-bold text-slate-500">{item.MEDICINECODE}</div></div><span className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-black text-red-700">{t("drug-master.ai")}</span></div>
                   <dl className="mt-3 grid gap-x-4 gap-y-2 text-xs sm:grid-cols-2">
-                    <HistoryDetail label="อาการแพ้" value={item.SIDE_EFFECT} />
-                    <HistoryDetail label="ความรุนแรง" value={item.SEVERITY} />
-                    <HistoryDetail label="ประเภท" value={item.ALLERGY_TYPE} />
-                    <HistoryDetail label="Correlation" value={item.CORRELATION_LEVEL} />
-                    <HistoryDetail label="รายละเอียด (ไทย)" value={item.ADVERSE_REACTION_LOCAL} />
-                    <HistoryDetail label="รายละเอียด (English)" value={item.ADVERSE_REACTION_ENGLISH} />
-                    <HistoryDetail label="ผู้รับรอง" value={item.CERTIFIED_BY} />
-                    <HistoryDetail label="หมายเหตุ" value={item.REMARKS} />
-                    <HistoryDetail label="วันที่บันทึก" value={formatDateTime(item.CREATEDATETIME)} />
+                    <HistoryDetail label={t("common.allergicSymptoms")} value={item.SIDE_EFFECT} />
+                    <HistoryDetail label={t("common.severity")} value={item.SEVERITY} />
+                    <HistoryDetail label={t("common.type")} value={item.ALLERGY_TYPE} />
+                    <HistoryDetail label={t("drug-master.correlation")} value={item.CORRELATION_LEVEL} />
+                    <HistoryDetail label={t("drug-master.detailsThai")} value={item.ADVERSE_REACTION_LOCAL} />
+                    <HistoryDetail label={t("drug-master.detailsEnglish")} value={item.ADVERSE_REACTION_ENGLISH} />
+                    <HistoryDetail label={t("drug-master.certifiedBy2")} value={item.CERTIFIED_BY} />
+                    <HistoryDetail label={t("common.notes")} value={item.REMARKS} />
+                    <HistoryDetail label={t("drug-master.recordedOn")} value={formatDateTime(item.CREATEDATETIME)} />
                   </dl>
                 </article>
               ))}
             </div>
-          ) : <EmptyHistory text="ยังไม่พบประวัติแพ้ยาของผู้ป่วยรายนี้" />}
+          ) : <EmptyHistory text={t("drug-master.noDrugAllergyHistoryForThisPatient")} />}
         </section>
       </div>
 
       {confirming && selectedPatient && selectedMedicine ? (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-4" role="presentation">
           <section aria-labelledby="confirm-allergy-title" aria-modal="true" className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl" role="dialog">
-            <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-600"><AlertTriangle className="h-5 w-5" /></span><div><h2 className="text-lg font-black text-slate-950" id="confirm-allergy-title">ยืนยันการบันทึกข้อมูลแพ้ยา</h2><p className="mt-1 text-sm font-semibold text-slate-500">ข้อมูลนี้จะทำให้ระบบแสดงคำเตือน AI ในใบสั่งยาที่ตรงกัน</p></div></div>
+            <div className="mb-3 flex justify-end"><LanguageSwitcher /></div>
+            <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-amber-50 text-amber-600"><AlertTriangle className="h-5 w-5" /></span><div><h2 className="text-lg font-black text-slate-950" id="confirm-allergy-title">{t("drug-master.confirmDrugAllergyRecord")}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{t("drug-master.thisRecordWillCreateAnAiAlert")}</p></div></div>
             <div className="mt-5 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
-              <ConfirmRow label="ผู้ป่วย" value={`${selectedPatient.FULLNAME_TH ?? "ไม่ระบุชื่อ"} · HN ${selectedPatient.PATIENTID}`} />
-              <ConfirmRow label="ยา" value={medicineLabel(selectedMedicine)} />
-              <ConfirmRow label="อาการแพ้" value={form.sideEffect} />
-              <ConfirmRow label="ความรุนแรง" value={form.severity} />
-              <ConfirmRow label="ผู้รับรอง" value={form.certifiedBy} />
+              <ConfirmRow label={t("drug-master.patient")} value={`${selectedPatient.FULLNAME_TH ?? t("drug-master.nameUnspecified")} · HN ${selectedPatient.PATIENTID}`} />
+              <ConfirmRow label={t("drug-master.medication")} value={medicineLabel(selectedMedicine, t)} />
+              <ConfirmRow label={t("common.allergicSymptoms")} value={form.sideEffect} />
+              <ConfirmRow label={t("common.severity")} value={form.severity} />
+              <ConfirmRow label={t("drug-master.certifiedBy2")} value={form.certifiedBy} />
             </div>
-            <div className="mt-6 flex justify-end gap-2"><Button disabled={saving} onClick={() => setConfirming(false)} variant="outline">ย้อนกลับ</Button><Button disabled={saving} onClick={() => void save()}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPlus className="h-4 w-4" />}ยืนยันบันทึก</Button></div>
+            <div className="mt-6 flex justify-end gap-2"><Button disabled={saving} onClick={() => setConfirming(false)} variant="outline">{t("drug-master.back")}</Button><Button disabled={saving} onClick={() => void save()}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardPlus className="h-4 w-4" />}{t("drug-master.confirmSave")}</Button></div>
           </section>
         </div>
       ) : null}
@@ -321,8 +325,8 @@ function updateForm<K extends keyof AllergyForm>(setter: React.Dispatch<React.Se
   setter((current) => ({ ...current, [key]: value }));
 }
 
-function medicineLabel(medicine: DrugAllergyMedicine) {
-  const name = medicine.COMMERCIALNAME || medicine.LOCALNAME || medicine.GENERICNAME || "ไม่ระบุชื่อยา";
+function medicineLabel(medicine: DrugAllergyMedicine, t: Translator) {
+  const name = medicine.COMMERCIALNAME || medicine.LOCALNAME || medicine.GENERICNAME || t("drug-master.medicationNameUnspecified");
   return `${medicine.MEDICINECODE} — ${name}`;
 }
 
@@ -334,9 +338,8 @@ function formatDateTime(value: string | null) {
 
 function readError(reason: unknown) {
   if (reason instanceof ApiClientError) {
-    if (reason.status === 409) return "พบข้อมูลแพ้ยารายการเดียวกันอยู่แล้ว";
-    if (reason.status === 422) return reason.message.replace("exceeds the TBLALLERGY limit of", "ยาวเกินขนาดที่ฐานข้อมูลรองรับ");
-    return reason.message;
+    if (reason.status === 409) return uiMessage("drug-master.thisDrugAllergyRecordAlreadyExists");
+    return frontendErrorMessage(reason, uiMessage("drug-master.anErrorOccurredTryAgain"));
   }
-  return reason instanceof Error ? reason.message : "เกิดข้อผิดพลาด กรุณาลองใหม่";
+  return frontendErrorMessage(reason, uiMessage("drug-master.anErrorOccurredTryAgain"));
 }

@@ -9,7 +9,9 @@
     "vercel-build": "next build --webpack",
     "start": "next start",
     "start:lan": "next start -H 0.0.0.0 -p 3000",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:i18n": "node --test tests/i18n.test.mjs",
+    "test:i18n:browser": "node tests/i18n-browser.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

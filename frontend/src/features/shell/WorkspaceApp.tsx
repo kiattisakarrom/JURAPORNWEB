@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslation } from "@/i18n";
+
 import { Activity } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -33,6 +35,7 @@ function persistSession(isActive: boolean) {
 }
 
 export function WorkspaceApp() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [sessionState, setSessionState] = useState<SessionState>("loading");
 
@@ -60,8 +63,7 @@ export function WorkspaceApp() {
       <main className="flex min-h-dvh items-center justify-center bg-[#eef1f5] text-[#1e2a3a]">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm font-bold text-slate-500 shadow-sm">
           <Activity className="h-5 w-5 animate-pulse text-blue-600" />
-          กำลังเตรียม Workstation...
-        </div>
+          {t("shell.preparingWorkstation")}</div>
       </main>
     );
   }

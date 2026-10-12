@@ -1,5 +1,9 @@
 "use client";
 
+import { LanguageSwitcher } from "@/i18n/LanguageSwitcher";
+
+import { useTranslation } from "@/i18n";
+
 import { PackageOpen, Pill, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,28 +21,30 @@ export function PickingPrescriptionPopup({
   prescriptionNumber: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div aria-modal="true" className="fixed inset-0 z-50 flex h-dvh justify-end bg-slate-950/25 backdrop-blur-[1px]" role="dialog">
-      <button aria-label="ปิดรายละเอียด PN" className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
+      <button aria-label={t("picking.closePnDetails")} className="hidden flex-1 cursor-default lg:block" onClick={onClose} type="button" />
       <aside className="relative flex h-full w-full flex-col overflow-hidden border-l border-slate-200 bg-[#f6f8fb] shadow-2xl sm:m-3 sm:h-[calc(100%-24px)] sm:rounded-2xl sm:border lg:max-w-4xl">
         <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 pr-16">
           <div className="flex flex-wrap items-center gap-2">
+            <LanguageSwitcher />
             <PackageOpen className="h-5 w-5 text-violet-600" />
-            <h2 className="text-xl font-black text-slate-950">รายการยา PN {prescriptionNumber}</h2>
+            <h2 className="text-xl font-black text-slate-950">{t("picking.pnMedications")} {prescriptionNumber}</h2>
             <Badge className={stageStyles[patient.stage]}>
               <span className={cn("mr-2 h-2 w-2 rounded-full", stageDotStyles[patient.stage])} />
-              {stageLabel(patient.stage)}
+              {stageLabel(patient.stage, t)}
             </Badge>
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-bold text-slate-500">
-            <span>VN {patient.vn}</span>
-            <span>HN {patient.hn}</span>
+            <span>{t("common.vn")} {patient.vn}</span>
+            <span>{t("common.hn")} {patient.hn}</span>
             <span>{patient.name}</span>
-            <span>{patient.drugs.length} รายการ</span>
+            <span>{patient.drugs.length}  {t("common.items")}</span>
           </div>
         </header>
 
-        <Button aria-label="ปิด" className="absolute right-4 top-4 z-10 bg-white shadow-sm" onClick={onClose} size="icon" variant="ghost">
+        <Button aria-label={t("common.close")} className="absolute right-4 top-4 z-10 bg-white shadow-sm" onClick={onClose} size="icon" variant="ghost">
           <X className="h-5 w-5" />
         </Button>
 
@@ -48,8 +54,7 @@ export function PickingPrescriptionPopup({
           ))}
           {patient.drugs.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-bold text-slate-400">
-              ไม่พบรายการยาใน PN นี้
-            </div>
+              {t("picking.noMedicationInThisPn")}</div>
           ) : null}
         </div>
       </aside>
@@ -58,6 +63,7 @@ export function PickingPrescriptionPopup({
 }
 
 function DrugCard({ drug, index }: { drug: DrugItem; index: number }) {
+  const { t } = useTranslation();
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -79,7 +85,7 @@ function DrugCard({ drug, index }: { drug: DrugItem; index: number }) {
             <ClinicalAlertBadges
               alerts={Array.from(new Set(drug.clinicalAlerts?.map((alert) => alert.kind) ?? []))}
               clinicalAlerts={drug.clinicalAlerts}
-              emptyLabel="ไม่มีแจ้งเตือน"
+              emptyLabel={t("common.noAlerts")}
             />
             <span className="text-sm font-black text-slate-700">
               {formatQuantity(drug.orderQuantity, drug.orderUnitCode)}

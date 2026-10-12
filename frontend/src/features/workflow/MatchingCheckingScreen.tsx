@@ -1,5 +1,7 @@
 "use client";
 
+import { frontendErrorMessage, uiMessage, useTranslation, type UiMessage, Message } from "@/i18n";
+
 import {
   Barcode,
   CheckCircle2,
@@ -56,22 +58,22 @@ function currentBangkokTime() {
 }
 
 function NoteButton({ hasNote, onClick }: { hasNote: boolean; onClick: () => void }) {
+  const { t } = useTranslation();
   return (
     <Button
-      aria-label={hasNote ? "เปิดบันทึก / NOTE (มีข้อความ NOTE)" : "เปิดบันทึก / NOTE"}
+      aria-label={hasNote ? t("workflow.openNoteNoteAvailable") : t("workflow.openNote")}
       className="relative h-10 rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50"
       onClick={onClick}
       size="sm"
       variant="outline"
     >
       <NotebookPen className="h-4 w-4" />
-      บันทึก / NOTE
-      {hasNote ? (
+      {t("common.note")}{hasNote ? (
         <span
-          aria-label="มีข้อความ NOTE"
+          aria-label={t("workflow.noteAvailable")}
           className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[11px] font-black leading-none text-white shadow-sm ring-2 ring-white"
           role="img"
-          title="มีข้อความ NOTE"
+          title={t("workflow.noteAvailable")}
         >
           !
         </span>
@@ -97,14 +99,15 @@ export function MatchingCheckingScreen({
   connected: boolean;
   onRefresh: () => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [guideCode, setGuideCode] = useState("");
   const [medicineCode, setMedicineCode] = useState("");
   const [stickerCode, setStickerCode] = useState("");
   const [checkingDrugCode, setCheckingDrugCode] = useState("");
-  const [guideError, setGuideError] = useState<string | null>(null);
-  const [medicineError, setMedicineError] = useState<string | null>(null);
-  const [checkingError, setCheckingError] = useState<string | null>(null);
+  const [guideError, setGuideError] = useState<string | UiMessage | null>(null);
+  const [medicineError, setMedicineError] = useState<string | UiMessage | null>(null);
+  const [checkingError, setCheckingError] = useState<string | UiMessage | null>(null);
   const [confirmedMedicineItemId, setConfirmedMedicineItemId] = useState<string | null>(null);
   const [selectedMedicationErrorItemId, setSelectedMedicationErrorItemId] = useState<string | null>(null);
   const [isMedicationErrorOpen, setIsMedicationErrorOpen] = useState(false);
@@ -152,7 +155,7 @@ export function MatchingCheckingScreen({
   function findGuide(codeValue = guideCode) {
     const code = codeValue.trim().toLowerCase();
     if (!code) {
-      setGuideError("กรุณากรอกรหัสใบนำทาง");
+      setGuideError(uiMessage("workflow.enterAGuideCode"));
       return;
     }
 
@@ -161,13 +164,13 @@ export function MatchingCheckingScreen({
       && [item.guide, item.basket, item.vn, item.hn].some((value) => value.toLowerCase() === code),
     );
     if (matches.length > 1) {
-      setGuideError("พบผู้ป่วยมากกว่าหนึ่ง VN กรุณาเลือกใบนำทางจากรายการ");
+      setGuideError(uiMessage("workflow.multipleVnsFoundSelectAGuideFrom"));
       return;
     }
     const basket = matches[0];
 
     if (!basket) {
-      setGuideError(`ไม่พบใบนำทางที่ระบุในรายการ ${stage === "matching" ? "Matching" : "Checking"}`);
+      setGuideError(uiMessage("workflow.guideNotFoundInList", { p0: stage === "matching" ? uiMessage("common.matching") : uiMessage("common.checking") }));
       return;
     }
 
@@ -186,7 +189,7 @@ export function MatchingCheckingScreen({
       && [item.guide, item.basket, item.vn, item.hn].some((candidate) => candidate.toLowerCase() === code),
     );
     if (matches.length > 1) {
-      setGuideError("พบผู้ป่วยมากกว่าหนึ่ง VN กรุณาเลือกใบนำทางจากรายการ");
+      setGuideError(uiMessage("workflow.multipleVnsFoundSelectAGuideFrom"));
       return;
     }
     const basket = matches[0];
@@ -198,18 +201,18 @@ export function MatchingCheckingScreen({
   }
 
   async function scanMedicine() {
-    if (!connected) { setMedicineError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!connected) { setMedicineError(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     if (!selected || stage !== "matching") return;
 
     const code = medicineCode.trim().toLowerCase();
     if (!code) {
-      setMedicineError("กรุณากรอกรหัสยา");
+      setMedicineError(uiMessage("workflow.enterADrugCode"));
       return;
     }
 
     const item = selected.items.find((drug) => drug.code.toLowerCase() === code && drug.status === "wait");
     if (!item) {
-      setMedicineError("ไม่พบรายการยาที่ยังรอสแกนด้วยรหัสนี้");
+      setMedicineError(uiMessage("workflow.noMedicationAwaitingScanWithThisCode"));
       return;
     }
     setPrintingItemId(item.id);
@@ -227,7 +230,7 @@ export function MatchingCheckingScreen({
       setMedicineError(null);
       await refreshBaskets();
     } catch (error) {
-      setMedicineError(`สแกนยาแล้ว แต่พิมพ์ฉลากไม่สำเร็จ: ${readWorkflowError(error)} กรุณากดพิมพ์สติกเกอร์อีกครั้ง`);
+      setMedicineError(uiMessage("workflow.medicationScannedButLabelPrintingFailedPrint", { p0: readWorkflowError(error) }));
       await refreshBaskets().catch(() => undefined);
     } finally {
       setPrintingItemId(null);
@@ -254,19 +257,19 @@ export function MatchingCheckingScreen({
 
     const code = checkingDrugCode.trim().toLowerCase();
     if (!code) {
-      setCheckingError("กรุณาสแกนรหัสยาที่กล่อง");
+      setCheckingError(uiMessage("workflow.scanTheDrugCodeOnTheBox"));
       return;
     }
 
     const item = selected.items.find((drug) => drug.code.toLowerCase() === code);
     if (!item) {
-      setCheckingError("ยังไม่พบรหัสยานี้ กรุณาสแกน QR ฉลากเพื่อบันทึกผลตรวจไม่ตรงกัน");
+      setCheckingError(uiMessage("workflow.drugCodeNotFoundScanTheLabel"));
       setConfirmedMedicineItemId("unknown-medicine-code");
       return;
     }
 
     if (item.status === "done") {
-      setCheckingError("รายการยานี้ตรวจสอบผ่านแล้ว");
+      setCheckingError(uiMessage("workflow.thisMedicationHasAlreadyPassedChecking"));
       setConfirmedMedicineItemId(null);
       return;
     }
@@ -276,16 +279,16 @@ export function MatchingCheckingScreen({
   }
 
   async function verifyStickerWithDrug() {
-    if (!connected) { setCheckingError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!connected) { setCheckingError(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     if (!selected || stage !== "checking") return;
 
     if (!confirmedMedicineItemId) {
-      setCheckingError("กรุณาสแกนรหัสยาที่กล่องก่อน");
+      setCheckingError(uiMessage("workflow.scanTheDrugCodeOnTheBox2"));
       return;
     }
 
     if (!stickerCode.trim()) {
-      setCheckingError("กรุณาสแกน QR บนสติกเกอร์ยา");
+      setCheckingError(uiMessage("workflow.scanTheQrOnTheDrugLabel"));
       return;
     }
 
@@ -313,7 +316,7 @@ export function MatchingCheckingScreen({
   }
 
   async function sendSelectedToChecking() {
-    if (!connected) { setMedicineError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!connected) { setMedicineError(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
 
     try {
@@ -329,7 +332,7 @@ export function MatchingCheckingScreen({
   }
 
   async function sendSelectedToDispensing() {
-    if (!connected) { setCheckingError("ขาดการเชื่อมต่อ กรุณารอข้อมูลล่าสุด"); return; }
+    if (!connected) { setCheckingError(uiMessage("common.disconnectedWaitForCurrentData")); return; }
     if (!selected || selectedProgress?.done !== selectedProgress?.total) return;
     try {
       await transitionPackage(selected.id, "SEND_TO_DISPENSING");
@@ -342,13 +345,13 @@ export function MatchingCheckingScreen({
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-[#f7f9fc]">
-      {packages.find(p => p.PACKAGE_ID === selectedId)?.SOURCE_CHANGED ? <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">ข้อมูลใบยาต้นทางเปลี่ยนหลังสร้างแพ็กเกจ — รายการยาและ QR ของแพ็กเกจนี้ยังเป็นข้อมูลเดิม</div> : null}
-      {selectedId && !selected && !isLoading ? <div role="status" className="border-b border-blue-200 bg-blue-50 px-5 py-3 text-sm text-blue-800">รายการที่เลือกไม่อยู่ในหน้านี้แล้ว กรุณาเลือกใบนำทางใหม่</div> : null}
+      {packages.find(p => p.PACKAGE_ID === selectedId)?.SOURCE_CHANGED ? <div role="status" className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">{t("workflow.sourcePrescriptionChangedAfterPackageCreationPackage")}</div> : null}
+      {selectedId && !selected && !isLoading ? <div role="status" className="border-b border-blue-200 bg-blue-50 px-5 py-3 text-sm text-blue-800">{t("workflow.selectedRecordIsNoLongerOnThis")}</div> : null}
       {stage === "matching" ? (
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
           <aside className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
             <section className="shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-              <label className="block text-lg font-black text-slate-950" htmlFor="matching-guide-code">ค้นหาใบนำทาง</label>
+              <label className="block text-lg font-black text-slate-950" htmlFor="matching-guide-code">{t("workflow.findGuide")}</label>
               <div className="relative mt-3">
                 <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                 <input
@@ -358,11 +361,11 @@ export function MatchingCheckingScreen({
                   onKeyDown={(event) => {
                     if (event.key === "Enter") findGuide();
                   }}
-                  placeholder="สแกนหรือกรอกรหัสใบนำทาง"
+                  placeholder={t("workflow.scanOrEnterGuideCode")}
                   value={guideCode}
                 />
                 <button
-                  aria-label="ยืนยันรหัสใบนำทาง"
+                  aria-label={t("workflow.confirmGuideCode")}
                   className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100"
                   onClick={() => findGuide()}
                   type="button"
@@ -372,41 +375,41 @@ export function MatchingCheckingScreen({
               </div>
               <div className="mt-4 flex items-center gap-3 text-slate-500">
                 <Info className="h-5 w-5 shrink-0" />
-                <p className="text-sm font-bold md:text-base">เลือกใบนำทางจากรายการ หรือสแกนรหัสด้านบน</p>
+                <p className="text-sm font-bold md:text-base">{t("workflow.selectAGuideFromTheListOr")}</p>
               </div>
-              {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{guideError}</p> : null}
+              {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert"><Message value={guideError} /></p> : null}
             </section>
 
             {selected ? (
               <section className="shrink-0 rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm shadow-blue-100 md:p-6" aria-live="polite">
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="font-mono text-lg font-black text-slate-950">ใบนำทาง {selected.guide}</h2>
-                  <Badge className="shrink-0 bg-amber-50 px-3 py-1.5 text-amber-700">กำลัง Matching</Badge>
+                  <h2 className="font-mono text-lg font-black text-slate-950">{t("workflow.guide")} {selected.guide}</h2>
+                  <Badge className="shrink-0 bg-amber-50 px-3 py-1.5 text-amber-700">{t("workflow.matching")}</Badge>
                 </div>
                 <div className="mt-4 text-lg font-black text-slate-900">{selected.name}</div>
                 <div className="mt-3 grid grid-cols-2 divide-x divide-slate-200 text-sm font-bold text-slate-600">
-                  <span>VN {selected.vn}</span>
-                  <span className="pl-5">HN {selected.hn}</span>
+                  <span>{t("common.vn")} {selected.vn}</span>
+                  <span className="pl-5">{t("common.hn")} {selected.hn}</span>
                 </div>
               </section>
             ) : null}
 
             <section className="flex min-h-[280px] flex-1 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
               <div className="flex items-center gap-3">
-                <h2 className="text-base font-black text-slate-950 md:text-lg">รายการรอ Matching</h2>
+                <h2 className="text-base font-black text-slate-950 md:text-lg">{t("workflow.awaitingMatching")}</h2>
                 <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-blue-600 px-2 text-sm font-black text-white">{filtered.length}</span>
                 <div className="flex-1" />
-                <button aria-label="รีเฟรชรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+                <button aria-label={t("workflow.refreshList")} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
                   <RefreshCw className="h-5 w-5" />
                 </button>
-                <button aria-label="กรองรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+                <button aria-label={t("workflow.filterList")} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
                   <Filter className="h-5 w-5" />
                 </button>
               </div>
 
               <div className="mt-4 min-h-0 space-y-3 overflow-y-auto pr-1">
-                {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}
-                {!isLoading && filtered.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">ไม่พบรายการรอ Matching</div> : null}
+                {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">{t("common.loadingData")}</div> : null}
+                {!isLoading && filtered.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">{t("workflow.noRecordsAwaitingMatching")}</div> : null}
                 {filtered.map((basket, index) => {
                   const isSelected = basket.id === selected?.id;
                   return (
@@ -425,14 +428,14 @@ export function MatchingCheckingScreen({
                       <span className="min-w-0">
                         <span className="block font-mono text-base font-black text-slate-950">{basket.guide}</span>
                         <span className="mt-1 block truncate font-black text-slate-800">{basket.name}</span>
-                        <span className="mt-1 block font-mono text-xs font-bold text-slate-400">VN {basket.vn}</span>
+                        <span className="mt-1 block font-mono text-xs font-bold text-slate-400">{t("common.vn")} {basket.vn}</span>
                       </span>
                       <span className="text-right">
                         <span className="flex items-center justify-end gap-1 text-xs font-bold text-slate-500">
                           <Clock3 className="h-4 w-4" />
-                          {isSelected ? "กำลัง Matching" : basket.waitingText ?? (index === 0 ? "รอ 3 นาที" : "เพิ่งส่งมา")}
+                          {isSelected ? t("workflow.matching") : basket.waitingText ?? (index === 0 ? t("workflow.waiting3Minutes") : t("workflow.justReceived"))}
                         </span>
-                        <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length} รายการ</span>
+                        <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length}  {t("common.items")}</span>
                       </span>
                       <ChevronRight className={cn("h-5 w-5", isSelected ? "text-blue-700" : "text-slate-600")} />
                     </button>
@@ -447,7 +450,7 @@ export function MatchingCheckingScreen({
               <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
                 <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                   <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                    <h2 className="text-xl font-black text-slate-950 md:text-2xl">{t("workflow.guideMedications")}</h2>
                     <NoteButton hasNote={hasSelectedNote} onClick={() => setIsNoteOpen(true)} />
                   </div>
                   <div className="flex min-w-[220px] items-center gap-4">
@@ -455,13 +458,13 @@ export function MatchingCheckingScreen({
                       <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />
                     </div>
                     <div className="whitespace-nowrap font-mono text-xl font-black text-slate-900">
-                      {selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">รายการ</span>
+                      {selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">{t("common.items")}</span>
                     </div>
                   </div>
                 </div>
 
                 <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-                  <label className="text-sm font-black text-slate-700" htmlFor="matching-medicine-code">สแกนรหัสยา</label>
+                  <label className="text-sm font-black text-slate-700" htmlFor="matching-medicine-code">{t("workflow.scanDrugCode")}</label>
                   <div className="relative mt-2">
                     <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                     <input
@@ -474,18 +477,17 @@ export function MatchingCheckingScreen({
                       onKeyDown={(event) => {
                         if (event.key === "Enter") void scanMedicine();
                       }}
-                      placeholder="กรอกรหัสยาเพื่อพิมพ์สติกเกอร์อัตโนมัติ"
+                      placeholder={t("workflow.enterDrugCodeToPrintLabelAutomatically")}
                       value={medicineCode}
                     />
-                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={() => void scanMedicine()} type="button">
+                    <button aria-label={t("workflow.confirmDrugCode")} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={() => void scanMedicine()} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
-                  {medicineError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{medicineError}</p> : null}
+                  {medicineError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert"><Message value={medicineError} /></p> : null}
                   <p className="mt-3 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm">
                     <Info className="h-4 w-4 shrink-0" />
-                    เมื่อรหัสถูกต้อง ระบบจะพิมพ์สติกเกอร์ทันที
-                  </p>
+                    {t("workflow.aCorrectCodePrintsTheLabelImmediately")}</p>
                 </section>
 
                 <div className="mt-5 space-y-3">
@@ -495,7 +497,7 @@ export function MatchingCheckingScreen({
                     const isSelectedForMedicationError = selectedMedicationErrorItemId === item.id;
                     return (
                       <div
-                        aria-label={`เลือก ${item.name} เพื่อรายงาน ME`}
+                        aria-label={t("workflow.selectToReportMe", { p0: item.name })}
                         aria-pressed={isSelectedForMedicationError}
                         className={cn(
                           "grid cursor-pointer gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:grid-cols-[48px_minmax(220px,1fr)_130px_190px_minmax(126px,auto)] md:items-center md:px-5",
@@ -525,14 +527,14 @@ export function MatchingCheckingScreen({
                           <div className="flex flex-wrap items-center gap-2">
                             <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
                             {isSelectedForMedicationError ? (
-                              <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                              <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">{t("common.selectedForMeReport")}</span>
                             ) : null}
                           </div>
-                          <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
+                          <div className="mt-1 font-mono text-xs font-bold text-slate-400">{t("common.drugCode")} {item.code}</div>
                         </div>
                         <div>
                           <div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div>
-                          <div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div>
+                          <div className="mt-1 text-xs font-bold text-slate-400">{t("workflow.dispensedQuantity")}</div>
                         </div>
                         <div className={cn(
                           "text-sm font-black md:mr-6 md:justify-self-end md:text-right",
@@ -541,13 +543,13 @@ export function MatchingCheckingScreen({
                         )}>
                           {isDone ? (
                             <>
-                              <span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />พิมพ์สติกเกอร์แล้ว</span>
-                              <span className="mt-1 block font-mono font-bold text-slate-400">{item.printedAt ?? "พิมพ์แล้ว"}</span>
+                              <span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />{t("workflow.labelPrinted")}</span>
+                              <span className="mt-1 block font-mono font-bold text-slate-400">{item.printedAt ?? t("workflow.printed")}</span>
                             </>
                           ) : isWaitingPrint ? (
-                            <span className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2"><Printer className="h-4 w-4" />สแกนแล้ว รอพิมพ์</span>
+                            <span className="inline-flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2"><Printer className="h-4 w-4" />{t("workflow.scannedAwaitingPrint")}</span>
                           ) : (
-                            <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอสแกนยา</span>
+                            <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />{t("workflow.awaitingDrugScan")}</span>
                           )}
                         </div>
                         {isDone || isWaitingPrint ? (
@@ -563,7 +565,7 @@ export function MatchingCheckingScreen({
                               variant="outline"
                             >
                               {printingItemId === item.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />}
-                              {isDone ? "พิมพ์ซ้ำ" : "พิมพ์สติกเกอร์"}
+                              {isDone ? t("workflow.reprint") : t("workflow.printLabel")}
                             </Button>
                           </div>
                         ) : null}
@@ -579,8 +581,8 @@ export function MatchingCheckingScreen({
                     {selectedProgress.done === selectedProgress.total ? <CircleCheck className="h-5 w-5 text-emerald-600" /> : <LockKeyhole className="h-5 w-5" />}
                   </div>
                   <div>
-                    <div className="font-black text-slate-800">ทำรายการยาให้ครบก่อนส่งต่อ</div>
-                    <div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">กรุณาสแกนโคดยาทั้งหมด {selectedProgress.done}/{selectedProgress.total} รายการ </div>
+                    <div className="font-black text-slate-800">{t("workflow.completeAllMedicationBeforeForwarding")}</div>
+                    <div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">{t("workflow.scanAllDrugCodes")} {selectedProgress.done}/{selectedProgress.total}  {t("common.items")} </div>
                   </div>
                 </div>
                 <div className="flex-1" />
@@ -588,24 +590,22 @@ export function MatchingCheckingScreen({
                   className="h-12 shrink-0 rounded-xl border-orange-200 px-5 text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
                   disabled={!selectedMedicationErrorItem}
                   onClick={() => setIsMedicationErrorOpen(true)}
-                  title={selectedMedicationErrorItem ? `รายงาน ME สำหรับ ${selectedMedicationErrorItem.name}` : "กรุณาเลือกรายการยาที่พบปัญหาก่อน"}
+                  title={selectedMedicationErrorItem ? t("common.meReportFor", { p0: selectedMedicationErrorItem.name }) : t("common.selectTheMedicationWithAnIssueFirst")}
                   variant="outline"
                 >
                   <RefreshCw className="h-4 w-4" />
-                  รายงาน ME
-                </Button>
+                  {t("common.reportMe")}</Button>
                 <Button
                   className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
                   disabled={selectedProgress.done !== selectedProgress.total}
                   onClick={() => void sendSelectedToChecking()}
                 >
                   <LockKeyhole className="h-4 w-4" />
-                  ส่งไปหน้า Checking
-                </Button>
+                  {t("workflow.sendToChecking")}</Button>
               </div>
             </section>
           ) : (
-            <section aria-label="ยังไม่ได้เลือกใบนำทาง" className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
+            <section aria-label={t("workflow.noGuideSelected")} className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
           )}
         </div>
       ) : (
@@ -699,10 +699,10 @@ function CheckingWorkspace({
   isLoading: boolean;
   hasNote: boolean;
   guideCode: string;
-  guideError: string | null;
+  guideError: string | UiMessage | null;
   stickerCode: string;
   checkingDrugCode: string;
-  checkingError: string | null;
+  checkingError: string | UiMessage | null;
   confirmedMedicineItemId: string | null;
   checkedAt: Record<string, string>;
   onSelect: (basket: WorkflowBasketItem) => void;
@@ -718,6 +718,7 @@ function CheckingWorkspace({
   onOpenNote: () => void;
   onSendToDispensing: () => void;
 }) {
+  const { t } = useTranslation();
   const selectedProgress = selected ? progressOf(selected) : undefined;
   const confirmedMedicineItem = selected?.items.find((item) => item.id === confirmedMedicineItemId);
 
@@ -725,7 +726,7 @@ function CheckingWorkspace({
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-y-auto p-3 md:p-4 lg:grid-cols-[380px_minmax(0,1fr)] lg:overflow-hidden xl:grid-cols-[460px_minmax(0,1fr)] 2xl:grid-cols-[520px_minmax(0,1fr)]">
       <aside className="flex min-h-0 flex-col gap-4 lg:overflow-y-auto">
         <section className="shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-          <label className="block text-lg font-black text-slate-950" htmlFor="checking-guide-code">ค้นหาใบนำทาง</label>
+          <label className="block text-lg font-black text-slate-950" htmlFor="checking-guide-code">{t("workflow.findGuide")}</label>
           <div className="relative mt-3">
             <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
             <input
@@ -735,50 +736,50 @@ function CheckingWorkspace({
               onKeyDown={(event) => {
                 if (event.key === "Enter") onFindGuide();
               }}
-              placeholder="สแกนหรือกรอกรหัสใบนำทาง"
+              placeholder={t("workflow.scanOrEnterGuideCode")}
               value={guideCode}
             />
-            <button aria-label="ยืนยันรหัสใบนำทาง" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onFindGuide} type="button">
+            <button aria-label={t("workflow.confirmGuideCode")} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onFindGuide} type="button">
               <ScanLine className="h-6 w-6" />
             </button>
           </div>
           <div className="mt-4 flex items-center gap-3 text-slate-500">
             <Info className="h-5 w-5 shrink-0" />
-            <p className="text-sm font-bold md:text-base">เลือกใบนำทางจากรายการ หรือสแกนรหัสด้านบน</p>
+            <p className="text-sm font-bold md:text-base">{t("workflow.selectAGuideFromTheListOr")}</p>
           </div>
-          {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert">{guideError}</p> : null}
+          {guideError ? <p className="mt-2 text-sm font-bold text-red-600" role="alert"><Message value={guideError} /></p> : null}
         </section>
 
         {selected ? (
           <section className="shrink-0 rounded-2xl border border-blue-300 bg-blue-50 p-5 shadow-sm shadow-blue-100 md:p-6" aria-live="polite">
             <div className="flex items-start justify-between gap-3">
-              <h2 className="font-mono text-lg font-black text-slate-950">ใบนำทาง {selected.guide}</h2>
-              <Badge className="shrink-0 bg-blue-100 px-3 py-1.5 text-blue-700">กำลัง Checking</Badge>
+              <h2 className="font-mono text-lg font-black text-slate-950">{t("workflow.guide")} {selected.guide}</h2>
+              <Badge className="shrink-0 bg-blue-100 px-3 py-1.5 text-blue-700">{t("workflow.checking")}</Badge>
             </div>
             <div className="mt-4 text-lg font-black text-slate-900">{selected.name}</div>
             <div className="mt-3 grid grid-cols-2 divide-x divide-blue-200 text-sm font-bold text-slate-600">
-              <span>VN {selected.vn}</span>
-              <span className="pl-5">HN {selected.hn}</span>
+              <span>{t("common.vn")} {selected.vn}</span>
+              <span className="pl-5">{t("common.hn")} {selected.hn}</span>
             </div>
           </section>
         ) : null}
 
         <section className="flex min-h-[280px] flex-1 flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
           <div className="flex items-center gap-3">
-            <h2 className="text-base font-black text-slate-950 md:text-lg">รายการรอ Checking</h2>
+            <h2 className="text-base font-black text-slate-950 md:text-lg">{t("workflow.awaitingChecking")}</h2>
             <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-blue-600 px-2 text-sm font-black text-white">{baskets.length}</span>
             <div className="flex-1" />
-            <button aria-label="รีเฟรชรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+            <button aria-label={t("workflow.refreshList")} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
               <RefreshCw className="h-5 w-5" />
             </button>
-            <button aria-label="กรองรายการ" className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
+            <button aria-label={t("workflow.filterList")} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-blue-300 hover:text-blue-700" type="button">
               <Filter className="h-5 w-5" />
             </button>
           </div>
 
           <div className="mt-4 min-h-0 space-y-3 overflow-y-auto pr-1">
-            {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">กำลังโหลดข้อมูล...</div> : null}
-            {!isLoading && baskets.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">ไม่พบรายการรอ Checking</div> : null}
+            {isLoading ? <div className="p-4 text-sm font-bold text-slate-400">{t("common.loadingData")}</div> : null}
+            {!isLoading && baskets.length === 0 ? <div className="p-4 text-sm font-bold text-slate-400">{t("workflow.noRecordsAwaitingChecking")}</div> : null}
             {baskets.map((basket, index) => {
               const isSelected = basket.id === selected?.id;
               return (
@@ -797,11 +798,11 @@ function CheckingWorkspace({
                   <span className="min-w-0">
                     <span className="block font-mono text-base font-black text-slate-950">{basket.guide}</span>
                     <span className="mt-1 block truncate font-black text-slate-800">{basket.name}</span>
-                    <span className="mt-1 block font-mono text-xs font-bold text-slate-400">VN {basket.vn}</span>
+                    <span className="mt-1 block font-mono text-xs font-bold text-slate-400">{t("common.vn")} {basket.vn}</span>
                   </span>
                   <span className="text-right">
-                    <span className="flex items-center justify-end gap-1 text-xs font-bold text-slate-500"><Clock3 className="h-4 w-4" />{isSelected ? "กำลัง Checking" : basket.waitingText ?? (index === 0 ? "รอ 2 นาที" : "เพิ่งส่งมา")}</span>
-                    <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length} รายการ</span>
+                    <span className="flex items-center justify-end gap-1 text-xs font-bold text-slate-500"><Clock3 className="h-4 w-4" />{isSelected ? t("workflow.checking") : basket.waitingText ?? (index === 0 ? t("workflow.waiting2Minutes") : t("workflow.justReceived"))}</span>
+                    <span className="mt-3 block text-base font-black text-blue-700">{basket.items.length}  {t("common.items")}</span>
                   </span>
                   <ChevronRight className={cn("h-5 w-5", isSelected ? "text-blue-700" : "text-slate-600")} />
                 </button>
@@ -816,22 +817,22 @@ function CheckingWorkspace({
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-xl font-black text-slate-950 md:text-2xl">รายการยาในใบนำทาง</h2>
+                <h2 className="text-xl font-black text-slate-950 md:text-2xl">{t("workflow.guideMedications")}</h2>
                 <NoteButton hasNote={hasNote} onClick={onOpenNote} />
               </div>
               <div className="flex min-w-[220px] items-center gap-4">
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
                   <div className="h-full rounded-full bg-blue-600 transition-all" style={{ width: `${selectedProgress.percent}%` }} />
                 </div>
-                <div className="whitespace-nowrap font-mono text-xl font-black text-slate-900">{selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">รายการ</span></div>
+                <div className="whitespace-nowrap font-mono text-xl font-black text-slate-900">{selectedProgress.done}/{selectedProgress.total} <span className="font-sans text-sm">{t("common.items")}</span></div>
               </div>
             </div>
 
             <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-              <h3 className="text-base font-black text-slate-900">ตรวจสอบสติกเกอร์กับตัวยา</h3>
+              <h3 className="text-base font-black text-slate-900">{t("workflow.checkLabelAgainstMedication")}</h3>
               <div className="mt-4 grid gap-4 xl:grid-cols-2">
                 <div>
-                  <label className="text-sm font-black text-slate-700" htmlFor="checking-drug-code">1. สแกนรหัสยาที่กล่อง</label>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-drug-code">{t("workflow.1ScanTheDrugCodeOnThe")}</label>
                   <div className="relative mt-2">
                     <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                     <input
@@ -841,17 +842,17 @@ function CheckingWorkspace({
                       onKeyDown={(event) => {
                         if (event.key === "Enter") onConfirmMedicine();
                       }}
-                      placeholder="สแกนรหัสยาบนกล่อง"
+                      placeholder={t("workflow.scanDrugCodeOnBox")}
                       value={checkingDrugCode}
                     />
-                    <button aria-label="ยืนยันรหัสยา" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onConfirmMedicine} type="button">
+                    <button aria-label={t("workflow.confirmDrugCode")} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition hover:bg-blue-100" onClick={onConfirmMedicine} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-sm font-black text-slate-700" htmlFor="checking-sticker-code">2. สแกน QR บนสติกเกอร์</label>
+                  <label className="text-sm font-black text-slate-700" htmlFor="checking-sticker-code">{t("workflow.2ScanQrOnLabel")}</label>
                   <div className="relative mt-2">
                     <Barcode className="absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-700" />
                     <input
@@ -862,10 +863,10 @@ function CheckingWorkspace({
                       onKeyDown={(event) => {
                         if (event.key === "Enter") onVerifyPair();
                       }}
-                      placeholder={confirmedMedicineItemId ? "สแกน QR บนสติกเกอร์เพื่อตรวจสอบ" : "สแกนรหัสยาที่กล่องก่อน"}
+                      placeholder={confirmedMedicineItemId ? t("workflow.scanLabelQrToCheck") : t("workflow.scanTheDrugCodeOnTheBox3")}
                       value={stickerCode}
                     />
-                    <button aria-label="ตรวจสอบรหัสยากับสติกเกอร์" className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition enabled:hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" disabled={!confirmedMedicineItemId} onClick={onVerifyPair} type="button">
+                    <button aria-label={t("workflow.checkDrugCodeAgainstLabel")} className="absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-700 transition enabled:hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400" disabled={!confirmedMedicineItemId} onClick={onVerifyPair} type="button">
                       <ScanLine className="h-6 w-6" />
                     </button>
                   </div>
@@ -875,12 +876,11 @@ function CheckingWorkspace({
               {confirmedMedicineItem ? (
                 <p className="mt-4 flex items-center gap-2 rounded-xl bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
                   <Info className="h-4 w-4 shrink-0" />
-                  สแกนยา {confirmedMedicineItem.name} แล้ว กรุณาสแกน QR บนสติกเกอร์เพื่อตรวจสอบ
-                </p>
+                  {t("workflow.medicationScanned")}{confirmedMedicineItem.name} {t("workflow.scanTheLabelQrToCheck")}</p>
               ) : (
-                <p className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm"><Info className="h-4 w-4 shrink-0" />ระบบจะผ่านรายการเมื่อรหัสสติกเกอร์และรหัสยาที่กล่องตรงกันเท่านั้น</p>
+                <p className="mt-4 flex items-center gap-2 text-xs font-bold text-slate-500 md:text-sm"><Info className="h-4 w-4 shrink-0" />{t("workflow.anItemPassesOnlyWhenTheLabel")}</p>
               )}
-              {checkingError ? <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600" role="alert">{checkingError}</p> : null}
+              {checkingError ? <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600" role="alert"><Message value={checkingError} /></p> : null}
             </section>
 
             <div className="mt-5 space-y-3">
@@ -890,7 +890,7 @@ function CheckingWorkspace({
                 const isSelectedForMedicationError = item.id === selectedMedicationErrorItemId;
                 return (
                   <div
-                    aria-label={`เลือก ${item.name} เพื่อรายงาน ME`}
+                    aria-label={t("workflow.selectToReportMe", { p0: item.name })}
                     aria-pressed={isSelectedForMedicationError}
                     className={cn(
                       "grid cursor-pointer gap-3 rounded-2xl border p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:grid-cols-[48px_minmax(220px,1fr)_120px_170px_210px] md:items-center md:px-5",
@@ -914,18 +914,18 @@ function CheckingWorkspace({
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="truncate text-base font-black text-slate-950 md:text-lg">{item.name}</div>
                         {isSelectedForMedicationError ? (
-                          <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">เลือกเพื่อรายงาน ME</span>
+                          <span className="rounded-full bg-blue-600 px-2.5 py-1 text-xs font-black text-white">{t("common.selectedForMeReport")}</span>
                         ) : null}
                       </div>
-                      <div className="mt-1 font-mono text-xs font-bold text-slate-400">รหัสยา {item.code}</div>
+                      <div className="mt-1 font-mono text-xs font-bold text-slate-400">{t("common.drugCode")} {item.code}</div>
                     </div>
-                    <div><div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div><div className="mt-1 text-xs font-bold text-slate-400">จำนวนที่จ่าย</div></div>
-                    <div><div className="font-mono text-sm font-black text-slate-700">{item.stickerCode}</div><div className="mt-1 text-xs font-bold text-slate-400">รหัสสติกเกอร์</div></div>
+                    <div><div className="font-mono text-lg font-black text-slate-800">{item.quantity}</div><div className="mt-1 text-xs font-bold text-slate-400">{t("workflow.dispensedQuantity")}</div></div>
+                    <div><div className="font-mono text-sm font-black text-slate-700">{item.stickerCode}</div><div className="mt-1 text-xs font-bold text-slate-400">{t("workflow.labelCode")}</div></div>
                     <div className={cn(
                       "text-sm font-black md:mr-6 md:justify-self-end md:text-right",
                       isDone ? "text-emerald-600" : isPending ? "text-blue-700" : "text-amber-700",
                     )}>
-                      {isDone ? <><span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />ตรวจสอบตรงกันแล้ว</span><span className="mt-1 block font-mono font-bold text-slate-400">{checkedAt[item.id] ?? "ตรวจสอบแล้ว"}</span></> : isPending ? <span className="flex items-center gap-2"><ScanLine className="h-4 w-4" />รอสแกนรหัสยาที่กล่อง</span> : <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />รอตรวจสอบ</span>}
+                      {isDone ? <><span className="flex items-center gap-2"><CircleCheck className="h-4 w-4" />{t("workflow.matchConfirmed")}</span><span className="mt-1 block font-mono font-bold text-slate-400">{checkedAt[item.id] ?? t("workflow.checked")}</span></> : isPending ? <span className="flex items-center gap-2"><ScanLine className="h-4 w-4" />{t("workflow.awaitingBoxDrugCode")}</span> : <span className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2"><Clock3 className="h-4 w-4" />{t("workflow.awaitingCheck")}</span>}
                     </div>
                   </div>
                 );
@@ -936,36 +936,34 @@ function CheckingWorkspace({
           <div className="m-4 mt-0 flex shrink-0 flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:m-6 md:mt-0 md:flex-row md:items-center md:p-5">
             <div className="flex min-w-0 items-center gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700">{selectedProgress.done === selectedProgress.total ? <CircleCheck className="h-5 w-5 text-emerald-600" /> : <LockKeyhole className="h-5 w-5" />}</div>
-              <div><div className="font-black text-slate-800">ตรวจสอบยาให้ครบก่อนส่งต่อ</div><div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">สติกเกอร์และรหัสยาต้องตรงกันครบ {selectedProgress.done}/{selectedProgress.total} รายการ</div></div>
+              <div><div className="font-black text-slate-800">{t("workflow.checkAllMedicationBeforeForwarding")}</div><div className="mt-1 text-xs font-bold text-slate-500 md:text-sm">{t("workflow.labelAndDrugCodesMustMatchFor")} {selectedProgress.done}/{selectedProgress.total}  {t("common.items")}</div></div>
             </div>
             <div className="flex-1" />
             <Button
               className="h-12 shrink-0 rounded-xl border-orange-200 px-5 text-orange-700 hover:bg-orange-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
               disabled={!selectedMedicationErrorItemId}
               onClick={onOpenMedicationError}
-              title={selectedMedicationErrorItemId ? "รายงาน ME สำหรับยาที่เลือก" : "กรุณาเลือกรายการยาที่พบปัญหาก่อน"}
+              title={selectedMedicationErrorItemId ? t("workflow.meReportForSelectedMedication") : t("common.selectTheMedicationWithAnIssueFirst")}
               variant="outline"
             >
               <RefreshCw className="h-4 w-4" />
-              รายงาน ME
-            </Button>
+              {t("common.reportMe")}</Button>
             <Button
               className="h-12 shrink-0 rounded-xl bg-blue-600 px-6 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white disabled:opacity-100"
               disabled={selectedProgress.done !== selectedProgress.total}
               onClick={onSendToDispensing}
             >
               <PackageCheck className="h-4 w-4" />
-              ส่งไปหน้า Dispensing
-            </Button>
+              {t("workflow.sendToDispensing")}</Button>
           </div>
         </section>
       ) : (
-        <section aria-label="ยังไม่ได้เลือกใบนำทาง" className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
+        <section aria-label={t("workflow.noGuideSelected")} className="hidden min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm lg:block" />
       )}
     </div>
   );
 }
 
 function readWorkflowError(error: unknown) {
-  return error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการบันทึก Workflow";
+  return frontendErrorMessage(error, uiMessage("workflow.unableToSaveWorkflow"));
 }

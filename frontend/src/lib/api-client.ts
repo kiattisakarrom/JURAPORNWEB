@@ -1,3 +1,5 @@
+import type { UiMessage } from "@/i18n/messages";
+
 const DEFAULT_API_BASE_URL = "/backend-api/api/v1";
 
 type QueryValue = string | number | boolean | null | undefined;
@@ -5,6 +7,7 @@ type QueryValue = string | number | boolean | null | undefined;
 export class ApiClientError extends Error {
   readonly status: number;
   readonly details: unknown;
+  uiMessage?: UiMessage;
 
   constructor(message: string, status: number, details?: unknown) {
     super(message);
@@ -47,7 +50,7 @@ export async function apiGet<T>(
 
   const body = await parseResponseBody(response);
   if (!response.ok) {
-    throw new ApiClientError(readErrorMessage(body, response.status), response.status, body);
+    throw createResponseError(body, response.status);
   }
 
   return body as T;
@@ -68,7 +71,7 @@ export async function apiPost<T>(path: string, body: unknown, options: { signal?
 
   const responseBody = await parseResponseBody(response);
   if (!response.ok) {
-    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+    throw createResponseError(responseBody, response.status);
   }
 
   return responseBody as T;
@@ -89,7 +92,7 @@ export async function apiPut<T>(path: string, body: unknown, options: { signal?:
 
   const responseBody = await parseResponseBody(response);
   if (!response.ok) {
-    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+    throw createResponseError(responseBody, response.status);
   }
 
   return responseBody as T;
@@ -109,7 +112,7 @@ export async function apiDelete<T>(path: string, body?: unknown): Promise<T> {
 
   const responseBody = await parseResponseBody(response);
   if (!response.ok) {
-    throw new ApiClientError(readErrorMessage(responseBody, response.status), response.status, responseBody);
+    throw createResponseError(responseBody, response.status);
   }
 
   return responseBody as T;
@@ -135,4 +138,14 @@ function readErrorMessage(body: unknown, status: number) {
 
   if (typeof body === "string" && body.trim()) return body;
   return `API request failed with status ${status}`;
+}
+
+// Attach presentation metadata only when the server did not provide a message.
+function createResponseError(body: unknown, status: number) {
+  const error = new ApiClientError(readErrorMessage(body, status), status, body);
+  const serverMessage = typeof body === "string" && body.trim()
+    || typeof body === "object" && body !== null && "message" in body
+      && (typeof (body as { message?: unknown }).message === "string" || Array.isArray((body as { message?: unknown }).message));
+  if (!serverMessage) error.uiMessage = { kind: "ui-message", key: "common.apiRequestFailed", params: { status } };
+  return error;
 }
