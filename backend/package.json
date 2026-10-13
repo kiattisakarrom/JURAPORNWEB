@@ -13,6 +13,8 @@
     "db:install:test:local": "node scripts/test-fullstack-installer-local.js",
     "db:realtime:local": "node scripts/run-sql-file.js --profile local sql/005_enable_realtime_sync.sql",
     "db:realtime:validate:local": "node scripts/run-sql-file.js --profile local sql/006_validate_realtime_sync.sql",
+    "db:realtime:live": "node scripts/run-sql-file.js --profile live sql/005_enable_realtime_sync.sql",
+    "db:realtime:validate:live": "node scripts/run-sql-file.js --profile live sql/006_validate_realtime_sync.sql",
     "build": "nest build",
     "start": "nest start",
     "start:dev": "node scripts/run-profile-command.js local nest start --watch",

@@ -35,19 +35,6 @@ export type DrugAllergyHistory = {
   ITEMS: DrugAllergyHistoryItem[];
 };
 
-export type CreateDrugAllergyInput = {
-  patientId: string;
-  medicineCode: string;
-  sideEffect: string;
-  allergyType: string;
-  severity: string;
-  adverseReactionLocal?: string;
-  adverseReactionEnglish?: string;
-  correlationLevel: string;
-  certifiedBy: string;
-  remarks?: string;
-};
-
 export function searchDrugAllergyPatients(query: string, signal?: AbortSignal) {
   return apiPost<DrugAllergyPatient[]>('/drug-allergies/search-patients', { query, limit: 20 }, { signal });
 }
@@ -58,8 +45,4 @@ export function searchDrugAllergyMedicines(query: string, signal?: AbortSignal) 
 
 export function getDrugAllergyHistory(patientId: string, signal?: AbortSignal) {
   return apiPost<DrugAllergyHistory>('/drug-allergies/history', { patientId }, { signal });
-}
-
-export function createDrugAllergy(input: CreateDrugAllergyInput) {
-  return apiPost<DrugAllergyHistoryItem>('/drug-allergies', input);
 }

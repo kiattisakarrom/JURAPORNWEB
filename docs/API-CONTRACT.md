@@ -614,9 +614,9 @@ Client เรียก changes ด้วย cursor ของตนเองห�
 
 ## Drug Master: ข้อมูลแพ้ยาผู้ป่วย
 
-API กลุ่มนี้อ่านและเพิ่มข้อมูลโดยตรงใน `dbo.TBLALLERGY` และรับ JSON body เพื่อไม่ใส่
-HN หรือชื่อผู้ป่วยใน URL ระบบรองรับเฉพาะยาที่มี `MEDICINECODE` ใน
-`dbo.TBLMEDITEMSINFO` และรอบนี้ไม่มี API แก้ไขหรือลบประวัติเดิม
+`dbo.TBLALLERGY` เป็นข้อมูลจากระบบโรงพยาบาล หน้า Drug Master แสดงฟอร์มเดิมในสถานะ
+อ่านอย่างเดียว แต่ไม่ค้นหา ไม่โหลดประวัติรายบุคคล และไม่ส่ง request มายัง API กลุ่มนี้
+API สำหรับอ่านยังคงอยู่เพื่อความเข้ากันได้และรับ JSON body เพื่อไม่ใส่ HN หรือชื่อผู้ป่วยใน URL
 
 ```http
 POST /drug-allergies/search-patients
@@ -637,30 +637,17 @@ POST /drug-allergies
 { "patientId": "HN001" }
 ```
 
-เพิ่มประวัติแพ้ยา:
-
-```json
-{
-  "patientId": "HN001",
-  "medicineCode": "1400000001",
-  "sideEffect": "ผื่นคัน",
-  "allergyType": "Drug Allergy",
-  "severity": "Moderate",
-  "adverseReactionLocal": "ผื่นแดงทั่วตัว",
-  "adverseReactionEnglish": "Generalized rash",
-  "correlationLevel": "Probable",
-  "certifiedBy": "Pharmacist A",
-  "remarks": "ยืนยันจากการซักประวัติ"
-}
-```
-
-- Backend ตรวจ HN กับ `TBLPATIENT` และตรวจรหัสยากับ `TBLMEDITEMSINFO` อีกครั้งใน transaction
-- `adverseReactionLocal`, `adverseReactionEnglish` และ `remarks` ไม่บังคับ ส่วน field อื่นบังคับ
-- ความยาวข้อมูลถูกตรวจตาม metadata ของคอลัมน์จริงในฐานที่เลือกก่อน INSERT
-- ข้อมูลเหมือนกันทุก field ตอบ `409`; ยาเดียวกันสามารถมีหลายประวัติได้หากรายละเอียดต่างกัน
-- `CREATEDATETIME` และ `READDATETIME` ใช้เวลาจาก SQL Server
-- Trigger `TR_TBLALLERGY_Realtime` ทำให้ Verify คำนวณ AI ใหม่เฉพาะผู้ป่วยที่เกี่ยวข้อง
+- `POST /drug-allergies` ถูกปิดถาวรสำหรับหน้านี้และตอบ `403 Forbidden` โดยไม่มี SQL `INSERT`
+- ระบบต้นทางต้องเขียน `INSERT`, `UPDATE` หรือ `DELETE` ลง `dbo.TBLALLERGY` ในฐานข้อมูลเดียวกับ
+  JurapornWeb; Trigger ไม่ได้ดึงหรือรับข้อมูลข้าม SQL Server
+- Trigger `dbo.TR_TBLALLERGY_Realtime` จะบันทึก HN ที่เปลี่ยนลง
+  `dbo.TBLREALTIMEINVALIDATIONS` โดย invalidate ทั้ง HN เดิมและ HN ใหม่ในกรณีแก้ไข
+- Backend ตรวจ Change Tracking และส่ง SSE เพื่อให้ Verify คำนวณ AI ใหม่เฉพาะผู้ป่วยที่เกี่ยวข้อง
 - AI จะแสดงใน Verify เฉพาะเมื่อ HN และรหัสยาตรงกับยาใน visit นั้น
+- Realtime นี้มีไว้ปรับคำเตือน AI ใน Verify ไม่ได้มีไว้รีเฟรชประวัติในหน้า Drug Master
+- Live ติดตั้ง Trigger ด้วย `npm run db:realtime:live` และตรวจด้วย
+  `npm run db:realtime:validate:live` (หรือรันไฟล์ `005_enable_realtime_sync.sql` แล้ว
+  `006_validate_realtime_sync.sql` กับฐาน Live ที่เลือก) โดยไม่ต้องรัน seed
 
 ## Drug label template และ Browser Print
 
@@ -702,8 +689,9 @@ Matching scan รองรับ `packageItemId` เพิ่มเติมเ�
 | Status | Meaning |
 |---:|---|
 | `400` | Parameter ไม่ครบหรือรูปแบบไม่ถูกต้อง |
+| `403` | Endpoint ถูกปิดหรือไม่มีสิทธิ์เขียนข้อมูลจากระบบนี้ |
 | `404` | ไม่พบใบสั่งยาหรือผู้ป่วย |
-| `409` | ล็อก/สถานะขัดแย้ง, ข้อมูลแพ้ยาซ้ำ, SOURCE_CHANGED หรือ RESYNC_REQUIRED ตาม endpoint |
+| `409` | ล็อก/สถานะขัดแย้ง, SOURCE_CHANGED หรือ RESYNC_REQUIRED ตาม endpoint |
 | `422` | ข้อมูลเกินขนาดคอลัมน์ต้นทางหรือไม่ผ่านกติกาของ endpoint |
 | `503` | Backend ยังเชื่อมต่อฐานข้อมูลไม่ได้ |
 

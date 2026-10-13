@@ -1,6 +1,12 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
-  CreateDrugAllergyDto,
+  Body,
+  Controller,
+  ForbiddenException,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
+import {
   DrugAllergyHistoryDto,
   SearchDrugAllergyReferenceDto,
 } from './drug-allergy.dto';
@@ -29,7 +35,9 @@ export class DrugAllergyController {
   }
 
   @Post()
-  create(@Body() body: CreateDrugAllergyDto) {
-    return this.service.create(body);
+  create(): never {
+    throw new ForbiddenException(
+      'Drug allergy records are read-only and must be supplied by the hospital source system',
+    );
   }
 }
