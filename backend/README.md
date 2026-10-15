@@ -10,6 +10,9 @@ Backend แบบ NestJS สำหรับอ่านข้อมูลจา�
 
 ## Requirements
 
+สำหรับรัน Frontend/Backend ด้วย Docker และตั้งค่าฐานข้อมูลของเครื่องปลายทาง ดู
+[คู่มือ Docker](../docs/DEPLOYMENT-DOCKER.md) รวมข้อจำกัด login ปัจจุบันและวิธีอัปเดตจาก Git
+
 - Node.js 20 ขึ้นไป
 - SQL Server ที่ Backend เชื่อมต่อได้
 

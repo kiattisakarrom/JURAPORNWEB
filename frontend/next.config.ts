@@ -3,6 +3,8 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants";
 
 export default function nextConfig(phase: string): NextConfig {
   return {
+    // Docker runs the generated standalone server; keep next start for local use.
+    output: process.env.DOCKER_BUILD === "true" ? "standalone" : undefined,
     // Keep development artifacts away from the production build directory.
     // Running `npm run build` while LAN clients use `next dev` must not make
     // Fast Refresh reload every connected workstation.
@@ -19,7 +21,8 @@ export default function nextConfig(phase: string): NextConfig {
       return [
         {
           source: "/backend-api/:path*",
-          destination: "http://127.0.0.1:3001/:path*",
+          // Rewrites are captured at build time. Docker uses its service DNS.
+          destination: `${(process.env.BACKEND_INTERNAL_URL ?? "http://127.0.0.1:3001").replace(/\/$/, "")}/:path*`,
         },
       ];
     },
