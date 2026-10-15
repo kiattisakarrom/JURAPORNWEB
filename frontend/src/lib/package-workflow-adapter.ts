@@ -47,9 +47,23 @@ function overlayWorkflow(patient: PatientQueueItem, workflow: PackageWorkflow): 
     return {
       ...prescription,
       verifyStatus: state?.VERIFY_STATUS ?? "WAITING",
+      preverifyStatus: state?.PREVERIFY_STATUS ?? "NONE",
+      preverifiedAt: state?.PREVERIFIED_AT ?? null,
+      preverifiedBy: state?.PREVERIFIED_BY ?? null,
       drugs: prescription.drugs.map((drug) => overlayDrug(drug, state?.ITEM_STATES ?? [], workflow.ACTIVE_PACKAGE_ID)),
     };
   });
+
+  const actionable = prescriptions?.filter((prescription) => prescription.drugs.length > 0) ?? [];
+  const canFinalizePreverify = workflow.CASE_STATUS === "VERIFY"
+    && !workflow.ACTIVE_PACKAGE_ID
+    && actionable.length > 0
+    && actionable.some((prescription) => prescription.preverifyStatus === "READY")
+    && actionable.every((prescription) =>
+      prescription.preverifyStatus === "READY"
+      || prescription.verifyStatus === "VERIFIED_WAITING"
+      || prescription.verifyStatus === "PACKAGED",
+    );
 
   return {
     ...patient,
@@ -60,6 +74,7 @@ function overlayWorkflow(patient: PatientQueueItem, workflow: PackageWorkflow): 
     workflowId: workflow.WORKFLOW_ID,
     workflowCaseStatus: workflow.CASE_STATUS,
     activePackageId: workflow.ACTIVE_PACKAGE_ID,
+    canFinalizePreverify,
     verifyNoteDraft: workflow.VERIFY_NOTE_DRAFT,
     verifyNoteUpdatedAt: workflow.VERIFY_NOTE_UPDATED_AT,
     verifyLock: {

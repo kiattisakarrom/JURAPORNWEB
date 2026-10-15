@@ -80,6 +80,9 @@ export type PatientPrescription = {
     detail: string;
   };
   verifyStatus?: "WAITING" | "VERIFIED_WAITING" | "PARTIAL" | "PACKAGED" | "SOURCE_CHANGED";
+  preverifyStatus?: "NONE" | "READY" | "STALE";
+  preverifiedAt?: string | null;
+  preverifiedBy?: string | null;
 };
 
 export type PatientQueueItem = {
@@ -107,6 +110,7 @@ export type PatientQueueItem = {
   workflowId?: string;
   workflowCaseStatus?: string;
   workflowAllowedActions?: string[];
+  canFinalizePreverify?: boolean;
   activePackageId?: string | null;
   verifyNoteDraft?: string | null;
   verifyNoteUpdatedAt?: string | null;

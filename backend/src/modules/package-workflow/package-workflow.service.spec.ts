@@ -5,6 +5,26 @@ import { DispensingPickupStatusDto } from './dto/package-workflow.dto';
 import { PackageWorkflowService } from './package-workflow.service';
 
 describe('PackageWorkflowService', () => {
+  it('marks Pre Verify READY only while the saved VN revision is current', () => {
+    const service = new PackageWorkflowService({} as DatabaseService, {} as VerifyService);
+    const workflows = [{
+      VISITDATETIME: '2026-10-14', VISITNUMBER: '1001', PRESCRIPTIONS: [
+        { PREVERIFY_STATUS: 'STALE', _PREVERIFY_SOURCE_REVISION: 'same-revision' },
+        { PREVERIFY_STATUS: 'STALE', _PREVERIFY_SOURCE_REVISION: 'old-revision' },
+        { PREVERIFY_STATUS: 'NONE', _PREVERIFY_SOURCE_REVISION: null },
+      ],
+    }];
+    const patients = [{ PATIENTID: 'HN1', FULLNAME_TH: 'Patient', PRESCRIPTIONS: [{
+      VISITDATETIME: '2026-10-14', VISITNUMBER: '1001', SOURCE_REVISION: 'same-revision', ITEMS: [],
+    }] }];
+    const result = (service as unknown as {
+      applyPreverifyStatuses: (items: unknown[], source: unknown[]) => Array<{ PRESCRIPTIONS: Array<{ PREVERIFY_STATUS: string; _PREVERIFY_SOURCE_REVISION?: string }> }>;
+    }).applyPreverifyStatuses(workflows, patients);
+
+    expect(result[0].PRESCRIPTIONS.map((item) => item.PREVERIFY_STATUS)).toEqual(['READY', 'STALE', 'NONE']);
+    expect(result[0].PRESCRIPTIONS[0]._PREVERIFY_SOURCE_REVISION).toBeUndefined();
+  });
+
   it('auto-saves an empty Verify note as NULL for the active lock owner', async () => {
     const lockRequest = {
       input: jest.fn().mockReturnThis(),

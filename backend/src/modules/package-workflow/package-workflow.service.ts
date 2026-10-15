@@ -19,6 +19,7 @@ import {
   ClaimVerifyLockDto,
   DispensingPickupStatusDto,
   DispensingStatusDto,
+  FinalizePreverifiedDto,
   MatchingPackageScanDto,
   PackagePriorityDto,
   PackagesQueryDto,
@@ -27,6 +28,7 @@ import {
   PackageWorkflowsQueryDto,
   SavePackageNoteDto,
   SaveVerifyNoteDto,
+  PreVerifyPrescriptionDto,
   SetPackagePendingDto,
   VerifyLockDto,
   VerifyModeDto,
@@ -86,6 +88,9 @@ interface WorkflowQueryRow {
   VERIFY_STATUS: string | null;
   VERIFIED_AT: Date | string | null;
   SOURCE_HASH: string | null;
+  PREVERIFY_SOURCE_REVISION: string | null;
+  PREVERIFIED_AT: Date | string | null;
+  PREVERIFIED_BY: string | null;
   ITEM_PRESCRIPTIONNUMBER: string | null;
   ITEM_MEDICINECODE: string | null;
   ITEMSEQ: number | null;
@@ -182,7 +187,7 @@ export class PackageWorkflowService {
 
   async findWorkflows(
     query: PackageWorkflowsQueryDto,
-    scope?: { visits: Array<{ VISITDATETIME: string; VISITNUMBER: string }>; createRequest: () => sql.Request },
+    scope?: { visits: Array<{ VISITDATETIME: string; VISITNUMBER: string }>; createRequest: () => sql.Request; sourcePatients?: VerifyPrescriptionPatient[] },
   ): Promise<PackageWorkflowResponse[]> {
     this.validateDateRange(query.fromDate, query.toDate);
     const conditions = ['1 = 1'];
@@ -229,7 +234,9 @@ export class PackageWorkflowService {
         workflow.VERIFY_LOCK_EXPIRES_AT, activePackage.PACKAGE_ID AS ACTIVE_PACKAGE_ID,
         prescription.PACKAGE_PRESCRIPTION_ID, prescription.PRESCRIPTIONNUMBER,
         prescription.VERIFY_STATUS, prescription.VERIFIED_AT,
-        prescription.SOURCE_HASH, item.PRESCRIPTIONNUMBER AS ITEM_PRESCRIPTIONNUMBER,
+        prescription.SOURCE_HASH, prescription.PREVERIFY_SOURCE_REVISION,
+        prescription.PREVERIFIED_AT, prescription.PREVERIFIED_BY,
+        item.PRESCRIPTIONNUMBER AS ITEM_PRESCRIPTIONNUMBER,
         item.MEDICINECODE AS ITEM_MEDICINECODE, item.ITEMSEQ,
         package.PACKAGE_ID, package.PACKAGE_NUMBER, package.PACKAGE_PRIORITY,
         package.PAGE_NOW, package.PACKAGE_STATUS,
@@ -250,7 +257,15 @@ export class PackageWorkflowService {
       ORDER BY workflow.VISITDATETIME DESC, workflow.CREATED_AT DESC,
         prescription.PRESCRIPTIONNUMBER, item.ITEMSEQ;
     `);
-    return this.groupWorkflowRows(result.recordset);
+    const workflows = this.groupWorkflowRows(result.recordset);
+    if (scope?.sourcePatients) return this.applyPreverifyStatuses(workflows, scope.sourcePatients);
+    const sources = workflows.length
+      ? await this.verifyService.findVisitsPrescriptions(workflows.map((workflow) => ({
+        VISITDATETIME: workflow.VISITDATETIME,
+        VISITNUMBER: workflow.VISITNUMBER,
+      })))
+      : [];
+    return this.applyPreverifyStatuses(workflows, sources);
   }
 
   async findWorkflow(workflowId: string, includeLockToken = false): Promise<PackageWorkflowResponse> {
@@ -272,7 +287,9 @@ export class PackageWorkflowService {
         workflow.VERIFY_LOCK_EXPIRES_AT, activePackage.PACKAGE_ID AS ACTIVE_PACKAGE_ID,
         prescription.PACKAGE_PRESCRIPTION_ID, prescription.PRESCRIPTIONNUMBER,
         prescription.VERIFY_STATUS, prescription.VERIFIED_AT,
-        prescription.SOURCE_HASH, item.PRESCRIPTIONNUMBER AS ITEM_PRESCRIPTIONNUMBER,
+        prescription.SOURCE_HASH, prescription.PREVERIFY_SOURCE_REVISION,
+        prescription.PREVERIFIED_AT, prescription.PREVERIFIED_BY,
+        item.PRESCRIPTIONNUMBER AS ITEM_PRESCRIPTIONNUMBER,
         item.MEDICINECODE AS ITEM_MEDICINECODE, item.ITEMSEQ,
         package.PACKAGE_ID, package.PACKAGE_NUMBER, package.PACKAGE_PRIORITY,
         package.PAGE_NOW, package.PACKAGE_STATUS,
@@ -293,8 +310,10 @@ export class PackageWorkflowService {
       WHERE workflow.WORKFLOW_ID = @workflowId
       ORDER BY prescription.PRESCRIPTIONNUMBER, item.ITEMSEQ;
     `);
-    const workflow = this.groupWorkflowRows(result.recordset, includeLockToken)[0];
+    let workflow = this.groupWorkflowRows(result.recordset, includeLockToken)[0];
     if (!workflow) throw new NotFoundException('Package workflow was not found');
+    const source = await this.getSourceVisit(workflow.VISITDATETIME, workflow.VISITNUMBER).catch(() => null);
+    workflow = this.applyPreverifyStatuses(workflow ? [workflow] : [], source ? [source] : [])[0];
     return workflow;
   }
 
@@ -806,6 +825,175 @@ export class PackageWorkflowService {
       PACKAGE: transactionResult.packageId
         ? await this.findPackage(transactionResult.packageId)
         : null,
+    };
+  }
+
+  async preverifyPrescription(
+    workflowId: string,
+    body: PreVerifyPrescriptionDto,
+  ): Promise<PackageWorkflowResponse> {
+    await this.databaseService.withTransaction(async (createRequest) => {
+      const lockRequest = createRequest();
+      lockRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      const lockResult = await lockRequest.query<WorkflowIdentityRow>(`
+        SELECT WORKFLOW_ID, VISITDATETIME, VISITNUMBER, CASE_STATUS,
+          VERIFY_LOCK_TOKEN, VERIFY_LOCK_SESSION, VERIFY_LOCK_EXPIRES_AT,
+          VERIFY_NOTE_DRAFT
+        FROM dbo.TBLWORKFLOWMASTER WITH (UPDLOCK, HOLDLOCK)
+        WHERE WORKFLOW_ID = @workflowId AND IS_ACTIVE = 1;
+      `);
+      const locked = lockResult.recordset[0];
+      if (!locked) throw new NotFoundException('Active workflow was not found');
+      this.assertVerifyLock(locked, body);
+      if (locked.CASE_STATUS !== 'VERIFY') throw new ConflictException('Workflow is not in Verify');
+
+      await this.assertNoActivePackage(createRequest, workflowId);
+      const source = await this.getSourceVisit(
+        this.toDateOnly(locked.VISITDATETIME),
+        locked.VISITNUMBER,
+        createRequest,
+      );
+      const currentRevision = sourceRevision(source);
+      const prescription = source.PRESCRIPTIONS.find(
+        (item) => item.PRESCRIPTIONNUMBER === body.prescriptionNumber,
+      );
+      if (!prescription) throw new NotFoundException('Prescription was not found in source data');
+      if (currentRevision !== body.expectedSourceRevision) {
+        throw new ConflictException({ code: 'SOURCE_CHANGED', message: 'ข้อมูลใบยาเปลี่ยน กรุณาตรวจข้อมูลล่าสุดและ Pre Verify ใหม่' });
+      }
+      await this.synchronizePrescriptionRows(createRequest, workflowId, source);
+
+      const updateRequest = createRequest();
+      updateRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      updateRequest.input('prescriptionNumber', sql.VarChar(16), body.prescriptionNumber);
+      updateRequest.input('sourceRevision', sql.VarChar(64), currentRevision);
+      updateRequest.input('actorName', sql.NVarChar(150), body.actorName ?? 'MVP user');
+      const updated = await updateRequest.query<{ PACKAGE_PRESCRIPTION_ID: string }>(`
+        UPDATE dbo.TBLPACKAGEPRESCRIPTIONS
+        SET PREVERIFY_SOURCE_REVISION = @sourceRevision,
+            PREVERIFIED_AT = SYSUTCDATETIME(), PREVERIFIED_BY = @actorName,
+            UPDATED_AT = SYSUTCDATETIME()
+        OUTPUT inserted.PACKAGE_PRESCRIPTION_ID
+        WHERE WORKFLOW_ID = @workflowId
+          AND PRESCRIPTIONNUMBER = @prescriptionNumber
+          AND VERIFY_STATUS NOT IN ('PACKAGED');
+      `);
+      if (!updated.recordset[0]) throw new ConflictException('Prescription cannot be Pre Verified');
+      await this.insertEvent(createRequest, {
+        workflowId,
+        eventType: 'PRESCRIPTION_PREVERIFIED',
+        result: 'SUCCESS',
+        actorName: body.actorName,
+        eventData: JSON.stringify({ prescriptionNumber: body.prescriptionNumber, sourceRevision: currentRevision }),
+      });
+      await this.clearVerifyLock(createRequest, workflowId);
+    }, sql.ISOLATION_LEVEL.SERIALIZABLE);
+    return this.findWorkflow(workflowId);
+  }
+
+  async finalizePreverified(
+    workflowId: string,
+    body: FinalizePreverifiedDto,
+  ): Promise<VerifyPackageResponse> {
+    const transactionResult = await this.databaseService.withTransaction(async (createRequest) => {
+      const lockRequest = createRequest();
+      lockRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      const lockResult = await lockRequest.query<WorkflowIdentityRow>(`
+        SELECT WORKFLOW_ID, VISITDATETIME, VISITNUMBER, CASE_STATUS,
+          VERIFY_LOCK_TOKEN, VERIFY_LOCK_SESSION, VERIFY_LOCK_EXPIRES_AT,
+          VERIFY_NOTE_DRAFT
+        FROM dbo.TBLWORKFLOWMASTER WITH (UPDLOCK, HOLDLOCK)
+        WHERE WORKFLOW_ID = @workflowId AND IS_ACTIVE = 1;
+      `);
+      const locked = lockResult.recordset[0];
+      if (!locked) throw new NotFoundException('Active workflow was not found');
+
+      const idempotencyRequest = createRequest();
+      idempotencyRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      idempotencyRequest.input('idempotencyKey', sql.VarChar(100), body.idempotencyKey);
+      const existing = await idempotencyRequest.query<{ PACKAGE_ID: string }>(`
+        SELECT PACKAGE_ID FROM dbo.TBLPACKAGEMASTER
+        WHERE WORKFLOW_ID = @workflowId AND IDEMPOTENCY_KEY = @idempotencyKey;
+      `);
+      if (existing.recordset[0]) return { packageId: existing.recordset[0].PACKAGE_ID };
+      if (locked.CASE_STATUS !== 'VERIFY') throw new ConflictException('Workflow is not in Verify');
+      if (
+        locked.VERIFY_LOCK_TOKEN && locked.VERIFY_LOCK_EXPIRES_AT &&
+        new Date(locked.VERIFY_LOCK_EXPIRES_AT).getTime() > Date.now() &&
+        locked.VERIFY_LOCK_SESSION !== body.sessionId
+      ) {
+        throw new ConflictException({ code: 'VERIFY_LOCKED', message: 'มีผู้ใช้อื่นกำลังเปิด PatientPanel ของ VN นี้' });
+      }
+      await this.assertNoActivePackage(createRequest, workflowId);
+      const source = await this.getSourceVisit(
+        this.toDateOnly(locked.VISITDATETIME),
+        locked.VISITNUMBER,
+        createRequest,
+      );
+      const currentRevision = sourceRevision(source);
+      if (currentRevision !== body.expectedSourceRevision) {
+        throw new ConflictException({ code: 'SOURCE_CHANGED', message: 'ข้อมูลใบยาเปลี่ยน กรุณา Pre Verify ใหม่' });
+      }
+      await this.synchronizePrescriptionRows(createRequest, workflowId, source);
+
+      const readinessRequest = createRequest();
+      readinessRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      readinessRequest.input('sourceRevision', sql.VarChar(64), currentRevision);
+      const readiness = await readinessRequest.query<{ PRESCRIPTIONNUMBER: string; VERIFY_STATUS: string; PREVERIFY_SOURCE_REVISION: string | null }>(`
+        SELECT PRESCRIPTIONNUMBER, VERIFY_STATUS, PREVERIFY_SOURCE_REVISION
+        FROM dbo.TBLPACKAGEPRESCRIPTIONS WITH (UPDLOCK, HOLDLOCK)
+        WHERE WORKFLOW_ID = @workflowId;
+      `);
+      const byPn = new Map(readiness.recordset.map((row) => [row.PRESCRIPTIONNUMBER, row]));
+      const notReady = source.PRESCRIPTIONS.some((prescription) => {
+        const row = byPn.get(prescription.PRESCRIPTIONNUMBER);
+        return !row || (!['VERIFIED_WAITING', 'PACKAGED'].includes(row.VERIFY_STATUS)
+          && row.PREVERIFY_SOURCE_REVISION !== currentRevision);
+      });
+      if (notReady) throw new ConflictException({ code: 'PREVERIFY_INCOMPLETE', message: 'กรุณา Pre Verify ให้ครบทุก PN ก่อนส่ง' });
+
+      const groups = await this.findRemainingSourceItems(createRequest, workflowId, source);
+      if (!groups.length) throw new ConflictException('ไม่พบรายการยาที่ยังไม่ถูกสร้างแพ็กเกจ');
+      const packageId = await this.createPackage(
+        createRequest,
+        workflowId,
+        source,
+        groups,
+        PackagePriorityDto.NORMAL,
+        body,
+        locked.VERIFY_NOTE_DRAFT,
+      );
+      const packagedRequest = createRequest();
+      packagedRequest.input('workflowId', sql.UniqueIdentifier, workflowId);
+      packagedRequest.input('sourceRevision', sql.VarChar(64), currentRevision);
+      packagedRequest.input('sourcePrescriptionNumbers', sql.NVarChar(sql.MAX), JSON.stringify(source.PRESCRIPTIONS.map((prescription) => prescription.PRESCRIPTIONNUMBER)));
+      await packagedRequest.query(`
+        UPDATE dbo.TBLPACKAGEPRESCRIPTIONS
+        SET VERIFY_STATUS = 'PACKAGED', VERIFIED_BY = COALESCE(VERIFIED_BY, PREVERIFIED_BY),
+            VERIFIED_AT = COALESCE(VERIFIED_AT, PREVERIFIED_AT), UPDATED_AT = SYSUTCDATETIME()
+        WHERE WORKFLOW_ID = @workflowId
+          AND PRESCRIPTIONNUMBER IN (SELECT value FROM OPENJSON(@sourcePrescriptionNumbers))
+          AND (VERIFY_STATUS = 'VERIFIED_WAITING' OR PREVERIFY_SOURCE_REVISION = @sourceRevision);
+      `);
+      await this.insertEvent(createRequest, {
+        workflowId,
+        packageId,
+        eventType: 'PREVERIFIED_WORKFLOW_FINALIZED',
+        fromPage: 'VERIFY',
+        toPage: 'PICKING',
+        result: 'SUCCESS',
+        actorName: body.actorName,
+        eventData: JSON.stringify({ sourceRevision: currentRevision }),
+      });
+      return { packageId };
+    }, sql.ISOLATION_LEVEL.SERIALIZABLE);
+
+    const workflow = await this.findWorkflow(workflowId);
+    return {
+      PACKAGE_CREATED: true,
+      WAITING_PRESCRIPTIONS: [],
+      WORKFLOW: workflow,
+      PACKAGE: await this.findPackage(transactionResult.packageId),
     };
   }
 
@@ -1461,7 +1649,7 @@ export class PackageWorkflowService {
     source: VerifyPrescriptionPatient,
     groups: Array<{ prescription: VerifyPrescriptionListItem; items: VerifyItem[] }>,
     priority: PackagePriorityDto,
-    body: VerifyPackageDto,
+    body: Pick<VerifyPackageDto, 'idempotencyKey' | 'actorName'>,
     verifyNote: string | null,
   ): Promise<string> {
     const packageId = randomUUID();
@@ -1966,8 +2154,12 @@ export class PackageWorkflowService {
           VERIFY_STATUS: row.VERIFY_STATUS ?? 'WAITING',
           VERIFIED_AT: this.toIso(row.VERIFIED_AT),
           SOURCE_HASH: row.SOURCE_HASH,
+          PREVERIFY_STATUS: row.PREVERIFY_SOURCE_REVISION ? 'STALE' : 'NONE',
+          PREVERIFIED_AT: this.toIso(row.PREVERIFIED_AT),
+          PREVERIFIED_BY: row.PREVERIFIED_BY,
           ITEM_STATES: [],
-        };
+          _PREVERIFY_SOURCE_REVISION: row.PREVERIFY_SOURCE_REVISION,
+        } as PackageWorkflowPrescriptionResponse & { _PREVERIFY_SOURCE_REVISION: string | null };
         prescriptions.set(row.PACKAGE_PRESCRIPTION_ID, prescription);
         workflow.PRESCRIPTIONS.push(prescription);
       }
@@ -1993,6 +2185,34 @@ export class PackageWorkflowService {
       itemStates.add(stateKey);
     }
     return Array.from(workflows.values());
+  }
+
+  private applyPreverifyStatuses(
+    workflows: PackageWorkflowResponse[],
+    patients: VerifyPrescriptionPatient[],
+  ): PackageWorkflowResponse[] {
+    const revisions = new Map<string, string>();
+    for (const patient of patients) {
+      for (const prescription of patient.PRESCRIPTIONS) {
+        if (prescription.SOURCE_REVISION) {
+          revisions.set(`${prescription.VISITDATETIME}|${prescription.VISITNUMBER}`, prescription.SOURCE_REVISION);
+        }
+      }
+    }
+    for (const workflow of workflows) {
+      const currentRevision = revisions.get(`${workflow.VISITDATETIME}|${workflow.VISITNUMBER}`);
+      for (const prescription of workflow.PRESCRIPTIONS) {
+        const internal = prescription as PackageWorkflowPrescriptionResponse & { _PREVERIFY_SOURCE_REVISION?: string | null };
+        const savedRevision = internal._PREVERIFY_SOURCE_REVISION;
+        prescription.PREVERIFY_STATUS = !savedRevision
+          ? 'NONE'
+          : currentRevision && savedRevision === currentRevision
+            ? 'READY'
+            : 'STALE';
+        delete internal._PREVERIFY_SOURCE_REVISION;
+      }
+    }
+    return workflows;
   }
 
   private groupPackageRows(rows: PackageQueryRow[]): PackageResponse[] {

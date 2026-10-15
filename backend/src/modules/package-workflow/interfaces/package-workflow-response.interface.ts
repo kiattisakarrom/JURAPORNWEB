@@ -18,6 +18,9 @@ export interface PackageWorkflowPrescriptionResponse {
   VERIFY_STATUS: string;
   VERIFIED_AT: string | null;
   SOURCE_HASH: string | null;
+  PREVERIFY_STATUS: 'NONE' | 'READY' | 'STALE';
+  PREVERIFIED_AT: string | null;
+  PREVERIFIED_BY: string | null;
   ITEM_STATES: PackageWorkflowItemStateResponse[];
 }
 

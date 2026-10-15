@@ -45,6 +45,7 @@ export function PatientPanel({
   onCloseBlocked,
   onNoteAccessLost,
   onSaveNote,
+  onPreVerify,
   onVerify,
 }: {
   patient: PatientQueueItem;
@@ -66,6 +67,7 @@ export function PatientPanel({
   onCloseBlocked?: () => void;
   onNoteAccessLost: () => void;
   onSaveNote: (note: string) => Promise<VerifyNoteSaveResult>;
+  onPreVerify: () => Promise<void>;
   onVerify: (input: { mode: "NORMAL" | "URGENT"; selectedDrugIds: string[]; note: string }) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -82,6 +84,7 @@ export function PatientPanel({
   const [selectedPackageDrugIds, setSelectedPackageDrugIds] = useState<Set<string>>(() => new Set());
   const [isUrgentPackage, setIsUrgentPackage] = useState(false);
   const [isSubmittingVerify, setIsSubmittingVerify] = useState(false);
+  const [isSubmittingPreVerify, setIsSubmittingPreVerify] = useState(false);
   const initialNote = verifyAccess?.noteDraft ?? "";
   const [note, setNote] = useState(initialNote);
   const [noteSaveStatus, setNoteSaveStatus] = useState<NoteSaveStatus>(initialNote ? "saved" : "idle");
@@ -364,6 +367,18 @@ export function PatientPanel({
     }
   }
 
+  async function submitPreVerify() {
+    if (!verifyAccess?.lockToken || verifyAccess.isReadOnly || isUrgentPackage) return;
+    setIsSubmittingPreVerify(true);
+    try {
+      const noteSaved = await flushNote();
+      if (!noteSaved) return;
+      await onPreVerify();
+    } finally {
+      setIsSubmittingPreVerify(false);
+    }
+  }
+
   return createPortal(
     <div aria-modal="true" className="fixed inset-0 z-50 flex h-dvh overflow-hidden overscroll-none bg-[#f6f8fb]" role="dialog">
       <div className="flex h-full min-w-0 w-full">
@@ -590,7 +605,7 @@ export function PatientPanel({
                 type="checkbox"
               />
             </label>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               <Button className="h-11 rounded-xl border-slate-200" onClick={() => setIsHadOpen(true)} variant="outline">
                 <ClipboardCheck className="h-4 w-4" />
                 <span className={cn("h-2.5 w-2.5 rounded-full", completedHadCount > 0 ? "bg-emerald-500" : "bg-slate-300")} />
@@ -609,8 +624,18 @@ export function PatientPanel({
                 {selectedMedicationErrorDrug ? t("common.reportMe") : t("verify.selectMedicationFirst")}
               </Button>
               <Button
+                className="h-11 rounded-xl border-blue-300 text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:opacity-100"
+                disabled={!verifyAccess?.lockToken || verifyAccess.isReadOnly || verifyAccess.isLoading || isUrgentPackage || isSubmittingVerify || isSubmittingPreVerify}
+                onClick={() => void submitPreVerify()}
+                title={isUrgentPackage ? t("verify.preVerifyNormalOnly") : t("verify.preVerifyDescription")}
+                variant="outline"
+              >
+                <ClipboardCheck className="h-4 w-4" />
+                {isSubmittingPreVerify ? t("verify.saving") : t("verify.preVerify")}
+              </Button>
+              <Button
                 className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
-                disabled={!verifyAccess?.lockToken || verifyAccess.isReadOnly || verifyAccess.isLoading || isSubmittingVerify || (isUrgentPackage && selectedPackageDrugIds.size === 0)}
+                disabled={!verifyAccess?.lockToken || verifyAccess.isReadOnly || verifyAccess.isLoading || isSubmittingVerify || isSubmittingPreVerify || (isUrgentPackage && selectedPackageDrugIds.size === 0)}
                 onClick={() => void submitVerify()}
               >
                 <CheckCircle2 className="h-4 w-4" />

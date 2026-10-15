@@ -24,17 +24,23 @@ export function MobileQueueList({
   selectedId,
   selectedPrescriptionId,
   verifiedPrescriptionIds,
+  preverifiedPrescriptionIds,
   onSelect,
   onPendingAction,
   onSendMatching,
+  onFinalizePreverified,
+  finalizingWorkflowIds,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
   selectedPrescriptionId?: string;
   verifiedPrescriptionIds: ReadonlySet<string>;
+  preverifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
   onSendMatching: (patient: PatientQueueItem) => void;
+  onFinalizePreverified: (patient: PatientQueueItem) => void;
+  finalizingWorkflowIds: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
@@ -53,6 +59,7 @@ export function MobileQueueList({
         const isExpanded = canExpand && expandedPatientId === patient.id;
         const isSelected = selectedId === patient.id;
         const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
+        const isFinalizing = Boolean(patient.workflowId && finalizingWorkflowIds.has(patient.workflowId));
         const activateCard = () => {
           if (!hasPrescriptions) return;
           if (patient.stage === "verify" && prescriptions.length === 1) {
@@ -124,6 +131,16 @@ export function MobileQueueList({
                     >
                       {t("queue.sendToMatching")}</Button>
                   ) : null}
+                  {patient.stage === "verify" && patient.canFinalizePreverify ? (
+                    <Button
+                      className="h-9 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
+                      disabled={isFinalizing || patient.verifyLock?.isLocked}
+                      onClick={() => onFinalizePreverified(patient)}
+                      type="button"
+                    >
+                      {isFinalizing ? "กำลังส่ง…" : "Verify"}
+                    </Button>
+                  ) : null}
                   {patient.stage === "verify" || patient.stage === "pending" ? (
                     <Button
                       className={patient.stage === "pending" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}
@@ -179,9 +196,10 @@ export function MobileQueueList({
                           {prescription.stage === "verify" ? (
                             <span className="mt-2 inline-flex items-center gap-1.5 text-blue-700">
                               {t("queue.check")}<VerifyStatusCheckbox
-                                checked={verifiedPrescriptionIds.has(prescription.id)}
-                                label={t("queue.verifyStatusForPn", { p0: prescription.pn })}
+                                checked={verifiedPrescriptionIds.has(prescription.id) || preverifiedPrescriptionIds.has(prescription.id)}
+                                label={preverifiedPrescriptionIds.has(prescription.id) && !verifiedPrescriptionIds.has(prescription.id) ? `Pre Verify แล้ว PN ${prescription.pn}` : t("queue.verifyStatusForPn", { p0: prescription.pn })}
                               />
+                              {preverifiedPrescriptionIds.has(prescription.id) && !verifiedPrescriptionIds.has(prescription.id) ? <span className="text-[10px] font-black">Pre Verify</span> : null}
                             </span>
                           ) : (
                             <span className="mt-2 block text-slate-400">{stageLabel(prescription.stage, t)}</span>

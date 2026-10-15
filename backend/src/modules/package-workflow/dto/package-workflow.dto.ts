@@ -151,6 +151,43 @@ export class VerifyPackageDto extends VerifyLockDto {
   idempotencyKey!: string;
 }
 
+export class PreVerifyPrescriptionDto extends VerifyLockDto {
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedSourceRevision!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(16)
+  prescriptionNumber!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  actorName?: string;
+}
+
+export class FinalizePreverifiedDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  sessionId!: string;
+
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedSourceRevision!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  actorName?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  idempotencyKey!: string;
+}
+
 export class SetPackagePendingDto extends VisitReferenceDto {
   @IsOptional()
   @IsString()

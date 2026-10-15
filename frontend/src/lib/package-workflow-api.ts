@@ -25,6 +25,9 @@ export type PackageWorkflowPrescription = {
   VERIFY_STATUS: "WAITING" | "VERIFIED_WAITING" | "PARTIAL" | "PACKAGED" | "SOURCE_CHANGED";
   VERIFIED_AT: string | null;
   SOURCE_HASH: string | null;
+  PREVERIFY_STATUS: "NONE" | "READY" | "STALE";
+  PREVERIFIED_AT: string | null;
+  PREVERIFIED_BY: string | null;
   ITEM_STATES: PackageWorkflowItemState[];
 };
 
@@ -179,6 +182,27 @@ export function verifyPackagePrescription(workflowId: string, input: {
 }) {
   return apiPost<{ PACKAGE_CREATED: boolean; WAITING_PRESCRIPTIONS: string[]; WORKFLOW: PackageWorkflow; PACKAGE: MedicationPackage | null }>(
     `/package-workflows/${workflowId}/verify`, input,
+  );
+}
+
+export function preverifyPackagePrescription(workflowId: string, input: {
+  expectedSourceRevision: string;
+  lockToken: string;
+  sessionId: string;
+  prescriptionNumber: string;
+  actorName?: string;
+}) {
+  return apiPost<PackageWorkflow>(`/package-workflows/${workflowId}/preverify`, input);
+}
+
+export function finalizePreverifiedWorkflow(workflowId: string, input: {
+  sessionId: string;
+  expectedSourceRevision: string;
+  actorName?: string;
+  idempotencyKey: string;
+}) {
+  return apiPost<{ PACKAGE_CREATED: boolean; WAITING_PRESCRIPTIONS: string[]; WORKFLOW: PackageWorkflow; PACKAGE: MedicationPackage | null }>(
+    `/package-workflows/${workflowId}/finalize-preverified`, input,
   );
 }
 

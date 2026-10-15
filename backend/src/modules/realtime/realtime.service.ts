@@ -155,7 +155,7 @@ export class RealtimeService implements OnModuleInit, OnModuleDestroy {
       const version = await this.tracker.version(createRequest);
       if (BigInt(version)<BigInt(requiredVersion)) this.resync();
       const patients = await this.verify.findVisitsPrescriptions(keys, createRequest);
-      const scope = { visits: keys, createRequest };
+      const scope = { visits: keys, createRequest, sourcePatients: patients };
       const workflows = await this.workflow.findWorkflows({ limit: 2147483647 }, scope);
       const packageRows = await this.workflow.findPackages({ limit: 2147483647 }, scope);
       const baselines = new Map<string,string|null>();

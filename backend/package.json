@@ -37,7 +37,9 @@
     "db:verify-note:live": "node scripts/run-sql-file.js --profile live sql/008_add_verify_note_autosave.sql",
     "db:dispensing:local": "node scripts/run-sql-file.js --profile local sql/009_dispensing_queue.sql",
     "db:drug-labels:local": "node scripts/run-sql-file.js --profile local sql/010_drug_label_templates.sql",
-    "db:drug-labels:live": "node scripts/run-sql-file.js --profile live sql/010_drug_label_templates.sql"
+    "db:drug-labels:live": "node scripts/run-sql-file.js --profile live sql/010_drug_label_templates.sql",
+    "db:preverify:local": "node scripts/run-sql-file.js --profile local sql/011_add_preverify.sql",
+    "db:preverify:live": "node scripts/run-sql-file.js --profile live sql/011_add_preverify.sql"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

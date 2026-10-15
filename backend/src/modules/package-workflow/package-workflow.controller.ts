@@ -17,11 +17,13 @@ import {
   ClaimVerifyLockDto,
   DispensingStatusDto,
   MatchingPackageScanDto,
+  FinalizePreverifiedDto,
   PackagesQueryDto,
   PackageTransitionDto,
   PackageWorkflowsQueryDto,
   SavePackageNoteDto,
   SaveVerifyNoteDto,
+  PreVerifyPrescriptionDto,
   SetPackagePendingDto,
   VerifyLockDto,
   VerifyPackageDto,
@@ -102,6 +104,24 @@ export class PackageWorkflowController {
   ): Promise<VerifyPackageResponse> {
     this.assertEnabled();
     return this.service.verifyPrescription(workflowId, body);
+  }
+
+  @Post('package-workflows/:workflowId/preverify')
+  preverifyPrescription(
+    @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
+    @Body() body: PreVerifyPrescriptionDto,
+  ): Promise<PackageWorkflowResponse> {
+    this.assertEnabled();
+    return this.service.preverifyPrescription(workflowId, body);
+  }
+
+  @Post('package-workflows/:workflowId/finalize-preverified')
+  finalizePreverified(
+    @Param('workflowId', new ParseUUIDPipe()) workflowId: string,
+    @Body() body: FinalizePreverifiedDto,
+  ): Promise<VerifyPackageResponse> {
+    this.assertEnabled();
+    return this.service.finalizePreverified(workflowId, body);
   }
 
   @Post('package-workflows/pending')

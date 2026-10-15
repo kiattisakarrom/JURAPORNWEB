@@ -424,6 +424,54 @@ Backend ตรวจข้อมูลและล็อกใน transaction; �
 `409 { "code": "SOURCE_CHANGED", "message": "..." }` โดยไม่บันทึก Verify รอบนั้น
 Client ต้อง sync และให้ผู้ใช้ตรวจใหม่ ห้าม retry คำสั่งบันทึกเอง
 
+### Pre Verify และส่ง VN ที่ตรวจล่วงหน้าแล้ว
+
+```http
+POST /package-workflows/{workflowId}/preverify
+
+{
+  "lockToken": "UUID",
+  "sessionId": "browser-session-id",
+  "prescriptionNumber": "01",
+  "expectedSourceRevision": "64-character revision",
+  "actorName": "Pharmacist"
+}
+```
+
+Pre Verify ใช้เฉพาะงานปกติ บันทึกว่า PN ผ่านการตรวจแล้ว แต่ไม่สร้างแพ็กเกจและ
+ไม่เปลี่ยน `VERIFY_STATUS` หลังสำเร็จ Backend ปล่อย Verify lock ให้เอง
+Workflow response และ realtime เพิ่มในแต่ละ `PRESCRIPTIONS[]`:
+
+```json
+{
+  "PREVERIFY_STATUS": "NONE | READY | STALE",
+  "PREVERIFIED_AT": "2026-10-14T08:00:00.000Z หรือ null",
+  "PREVERIFIED_BY": "Pharmacist หรือ null"
+}
+```
+
+สถานะ `READY` ใช้ได้ต่อเมื่อ revision ที่บันทึกตรงกับ `SOURCE_REVISION` ปัจจุบันของ
+ทั้ง VN หาก PN/ยา/ข้อมูลอ้างอิง/AI/DI เปลี่ยน สถานะจะเป็น `STALE` โดยอัตโนมัติ
+และต้องเปิด PatientPanel ตรวจใหม่ Pending ไม่ล้างค่า แต่เมื่อกลับ Verify จะใช้ได้เฉพาะ
+revision ยังตรงกัน
+
+```http
+POST /package-workflows/{workflowId}/finalize-preverified
+
+{
+  "sessionId": "browser-session-id",
+  "expectedSourceRevision": "64-character revision",
+  "actorName": "Pharmacist",
+  "idempotencyKey": "UUID ต่อการกดหนึ่งครั้ง"
+}
+```
+
+Endpoint นี้ใช้เมื่อ PN ที่เหลือทุกใบเป็น `READY` หรือผ่าน Verify เดิมแล้ว Backend
+ตรวจ revision, active package และ Verify lock อีกครั้งใน Serializable transaction
+ก่อนสร้างแพ็กเกจ Normal หนึ่งชุดและส่ง Picking หากข้อมูลเปลี่ยนตอบ `409 SOURCE_CHANGED`,
+ตรวจยังไม่ครบตอบ `409 PREVERIFY_INCOMPLETE`, หรือมีผู้ใช้อื่นเปิด PatientPanel ตอบ
+`409 VERIFY_LOCKED` การกดซ้ำด้วย idempotency key เดิมจะไม่สร้างแพ็กเกจซ้ำ
+
 ### Pending และ stage transition
 
 ```http

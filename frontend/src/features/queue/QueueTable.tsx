@@ -23,12 +23,14 @@ function PrescriptionRow({
   patient,
   prescription,
   isVerified,
+  isPreverified,
   selectedPrescriptionId,
   onSelect,
 }: {
   patient: PatientQueueItem;
   prescription: PatientPrescription;
   isVerified: boolean;
+  isPreverified: boolean;
   selectedPrescriptionId?: string;
   onSelect: (id: string, prescriptionId?: string) => void;
 }) {
@@ -64,8 +66,9 @@ function PrescriptionRow({
       <span className={cn("font-mono text-sm font-bold", durationClass(patient.durationMinutes))}>{formatDuration(patient.durationMinutes)}</span>
       <span className="truncate text-sm font-bold text-slate-600">{prescription.doctor ?? patient.doctor ?? t("common.awaitingDoctorData")}</span>
       {prescription.stage === "verify" ? (
-        <span className="flex justify-center">
-          <VerifyStatusCheckbox checked={isVerified} label={t("queue.verifyStatusForPn", { p0: prescription.pn })} />
+        <span className="flex flex-col items-center justify-center gap-1">
+          <VerifyStatusCheckbox checked={isVerified || isPreverified} label={isPreverified && !isVerified ? `Pre Verify แล้ว PN ${prescription.pn}` : t("queue.verifyStatusForPn", { p0: prescription.pn })} />
+          {isPreverified && !isVerified ? <span className="text-[10px] font-black text-blue-700">Pre Verify</span> : null}
         </span>
       ) : (
         <span className="text-xs font-bold text-slate-400">{stageLabel(prescription.stage, t)}</span>
@@ -80,18 +83,24 @@ export function QueueTable({
   selectedPrescriptionId,
   isLoading,
   verifiedPrescriptionIds,
+  preverifiedPrescriptionIds,
   onSelect,
   onPendingAction,
   onSendMatching,
+  onFinalizePreverified,
+  finalizingWorkflowIds,
 }: {
   patients: PatientQueueItem[];
   selectedId?: string;
   selectedPrescriptionId?: string;
   isLoading: boolean;
   verifiedPrescriptionIds: ReadonlySet<string>;
+  preverifiedPrescriptionIds: ReadonlySet<string>;
   onSelect: (id: string, prescriptionId?: string) => void;
   onPendingAction: (patient: PatientQueueItem) => void;
   onSendMatching: (patient: PatientQueueItem) => void;
+  onFinalizePreverified: (patient: PatientQueueItem) => void;
+  finalizingWorkflowIds: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const [expandedPatientId, setExpandedPatientId] = useState<string | null>(null);
@@ -138,6 +147,7 @@ export function QueueTable({
             const isExpanded = canExpand && expandedPatientId === patient.id;
             const isSelected = selectedId === patient.id;
             const canSendToMatching = patient.workflowAllowedActions?.includes("SEND_TO_MATCHING") ?? false;
+            const isFinalizing = Boolean(patient.workflowId && finalizingWorkflowIds.has(patient.workflowId));
             const activateRow = () => {
               if (!hasPrescriptions) return;
               if (patient.stage === "verify" && prescriptions.length === 1) {
@@ -221,6 +231,15 @@ export function QueueTable({
                         type="button"
                       >
                         {t("queue.sendToMatching")}</Button>
+                    ) : patient.stage === "verify" && patient.canFinalizePreverify ? (
+                      <Button
+                        className="h-9 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
+                        disabled={isFinalizing || patient.verifyLock?.isLocked}
+                        onClick={() => onFinalizePreverified(patient)}
+                        type="button"
+                      >
+                        {isFinalizing ? "กำลังส่ง…" : "Verify"}
+                      </Button>
                     ) : <span className="text-sm font-bold text-slate-300">—</span>}
                   </td>
                 </tr>
@@ -240,6 +259,7 @@ export function QueueTable({
                             {prescriptions.map((prescription) => (
                               <PrescriptionRow
                                 isVerified={verifiedPrescriptionIds.has(prescription.id)}
+                                isPreverified={preverifiedPrescriptionIds.has(prescription.id)}
                                 key={prescription.id}
                                 onSelect={onSelect}
                                 patient={patient}

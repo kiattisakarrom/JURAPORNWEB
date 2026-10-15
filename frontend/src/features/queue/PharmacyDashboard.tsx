@@ -25,8 +25,10 @@ import {
 import {
   claimVerifyLock,
   createIdempotencyKey,
+  finalizePreverifiedWorkflow,
   getVerifySessionId,
   heartbeatVerifyLock,
+  preverifyPackagePrescription,
   releaseVerifyLock,
   returnPackageWorkflowToVerify,
   saveVerifyNote,
@@ -136,6 +138,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   const selectedStageAtOpenRef = useRef<PatientQueueItem["stage"] | null>(null);
   const [patientPanelCloseRequest, setPatientPanelCloseRequest] = useState(0);
   const [verifyPage, setVerifyPage] = useState(1);
+  const [finalizingWorkflowIds, setFinalizingWorkflowIds] = useState<Set<string>>(() => new Set());
   const liveTime = useLiveClock();
   const realtime = useRealtimeQueue(dateRange);
   const datasetRef = useRef(realtime.datasetId);
@@ -152,6 +155,12 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
   const verifiedPrescriptionIds = useMemo(
     () => new Set(patients.flatMap((patient) => patient.prescriptions
       ?.filter((prescription) => prescription.verifyStatus === "VERIFIED_WAITING" || prescription.verifyStatus === "PACKAGED")
+      .map((prescription) => prescription.id) ?? [])),
+    [patients],
+  );
+  const preverifiedPrescriptionIds = useMemo(
+    () => new Set(patients.flatMap((patient) => patient.prescriptions
+      ?.filter((prescription) => prescription.preverifyStatus === "READY")
       .map((prescription) => prescription.id) ?? [])),
     [patients],
   );
@@ -370,6 +379,29 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     replaceWithoutPopup();
   }
 
+  function closeSelectedPanelAfterServerRelease() {
+    const hasPopupInUrl = Boolean(navigation.popup);
+    verifyAccessRequestRef.current += 1;
+    setSelectedId(null);
+    setSelectedPrescriptionId(null);
+    setSelectedVerifyAccess(null);
+    selectedStageAtOpenRef.current = null;
+    navigationClosePendingRef.current = false;
+    suppressMissingPopupRef.current = false;
+    closingPopupRef.current = true;
+    restoredPopupRef.current = null;
+    if (!hasPopupInUrl) {
+      if (lastPopupRef.current) replaceWithoutPopup();
+      return;
+    }
+    if (popupCloseMode(panelOpenedByAppRef.current) === "back") {
+      panelOpenedByAppRef.current = false;
+      router.back();
+      return;
+    }
+    replaceWithoutPopup();
+  }
+
   function updateDateRange(nextDateRange: WorkspaceDateRange) {
     setVerifyPage(1);
     closeSelectedItem();
@@ -505,6 +537,58 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
     } catch (error) {
       toast.error(readQueryError(error));
       await realtime.sync();
+    }
+  }
+
+  async function preverifySelectedPrescription() {
+    if (!realtime.connected || !verifyLeaseValid || verifySourceChanged) {
+      toast.error(uiMessage("queue.dataOrLockAccessChangedCloseAnd"));
+      return;
+    }
+    if (!selectedPrescription || !selectedVerifyAccess?.workflowId || !selectedVerifyAccess.lockToken) return;
+    try {
+      await preverifyPackagePrescription(selectedVerifyAccess.workflowId, {
+        expectedSourceRevision: selectedPrescription.sourceRevision ?? "",
+        lockToken: selectedVerifyAccess.lockToken,
+        sessionId: selectedVerifyAccess.sessionId,
+        prescriptionNumber: selectedPrescription.pn,
+        actorName: "Pharmacist",
+      });
+      toast.success(`Pre Verify PN ${selectedPrescription.pn} แล้ว`);
+      closeSelectedPanelAfterServerRelease();
+      await refreshPackageData();
+    } catch (error) {
+      toast.error(readQueryError(error));
+      await realtime.sync();
+    }
+  }
+
+  async function finalizePreverifiedPatient(patient: PatientQueueItem) {
+    if (!realtime.connected || !patient.workflowId || !patient.canFinalizePreverify) return;
+    const sourceRevision = patient.prescriptions?.find((prescription) => prescription.sourceRevision)?.sourceRevision;
+    if (!sourceRevision) {
+      toast.error("ไม่พบ revision ล่าสุดของ VN กรุณารีเฟรชข้อมูล");
+      return;
+    }
+    setFinalizingWorkflowIds((current) => new Set(current).add(patient.workflowId!));
+    try {
+      await finalizePreverifiedWorkflow(patient.workflowId, {
+        sessionId: getVerifySessionId(),
+        expectedSourceRevision: sourceRevision,
+        actorName: "Pharmacist",
+        idempotencyKey: createIdempotencyKey(),
+      });
+      toast.success(`Verify VN ${patient.vn} และส่งไป Picking แล้ว`);
+      await refreshPackageData();
+    } catch (error) {
+      toast.error(readQueryError(error));
+      await realtime.sync();
+    } finally {
+      setFinalizingWorkflowIds((current) => {
+        const next = new Set(current);
+        next.delete(patient.workflowId!);
+        return next;
+      });
     }
   }
 
@@ -746,7 +830,10 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         selectedId={selectedPatient?.id}
                         selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
+                        preverifiedPrescriptionIds={preverifiedPrescriptionIds}
+                        finalizingWorkflowIds={finalizingWorkflowIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
+                        onFinalizePreverified={(patient) => void finalizePreverifiedPatient(patient)}
                         onSendMatching={(patient) => void runSendMatching(patient)}
                         onSelect={selectQueueItem}
                       />
@@ -755,7 +842,10 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
                         selectedId={selectedPatient?.id}
                         selectedPrescriptionId={selectedPrescriptionId ?? undefined}
                         verifiedPrescriptionIds={verifiedPrescriptionIds}
+                        preverifiedPrescriptionIds={preverifiedPrescriptionIds}
+                        finalizingWorkflowIds={finalizingWorkflowIds}
                         onPendingAction={(patient) => void runPendingAction(patient)}
+                        onFinalizePreverified={(patient) => void finalizePreverifiedPatient(patient)}
                         onSendMatching={(patient) => void runSendMatching(patient)}
                         onSelect={selectQueueItem}
                       />
@@ -833,6 +923,7 @@ export function PharmacyDashboard({ onLogout }: { onLogout: () => void }) {
             onCloseBlocked={handlePatientPanelCloseBlocked}
             onNoteAccessLost={handleVerifyNoteAccessLost}
             onSaveNote={saveSelectedVerifyNote}
+            onPreVerify={preverifySelectedPrescription}
             onVerify={verifySelectedPrescription}
           />
         ) : null}
