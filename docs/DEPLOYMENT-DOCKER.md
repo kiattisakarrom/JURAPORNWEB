@@ -23,12 +23,12 @@ Docker ไม่ได้เพิ่มระบบยืนยันตัว�
 การชี้ `DB_*` ไป Live ไม่ได้ทำให้ฟังก์ชัน mock เปลี่ยนเป็นข้อมูลจริง
 การเพิ่ม Docker ครั้งนี้คงพฤติกรรมและ API contract เดิม ไม่ได้ทำระบบบัญชีหรือแทน mock เหล่านี้
 
-ระหว่างตรวจเมื่อ 15 ตุลาคม 2026 `npm audit --omit=dev` ของ backend
-รายงาน dependency 6 รายการ (critical 1, high 2, moderate 3)
-รวม `proxy-addr` และ `multer` จึงควรตรวจเงื่อนไขที่กระทบแอปและอัปเดต dependency
-พร้อมทดสอบก่อนเปิดใช้งานจริง Frontend รายงาน 6 รายการเช่นกัน
-(critical 1, high 4, moderate 1 รวม `next`)
-งาน Docker นี้ยังไม่ได้เปลี่ยน package-lock หรือแก้รายการ audit
+dependency ใน source และ lockfile ได้รับการอัปเดตเมื่อ 15 ตุลาคม 2026:
+`npm audit --package-lock-only --omit=dev` ของ frontend/backend เป็น 0 ทั้งคู่
+Backend รวม dev dependencies เป็น 0; frontend ยังมี 5 รายการ high ในสาย `braces`
+ของเครื่องมือ lint ซึ่งยังไม่มีแพตช์ และไม่อยู่ใน standalone runtime image ที่ตรวจ
+ดู [ผลแก้ไขและข้อจำกัดของ dependency audit](./DEPENDENCY-SECURITY-2026-10-15.md)
+container ที่เคยเปิดด้วย image เก่าต้อง build/deploy ใหม่จึงจะได้รับแพตช์
 
 ## เส้นทางการเชื่อมต่อ
 
